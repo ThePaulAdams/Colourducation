@@ -379,46 +379,23 @@
                     return avgNormal.divideScalar(count).normalize();
                 });
                 
-                // Create beveled edges by adding intermediate points
-                const bevelWidth = 0.02; // How much to bevel the edges
-                
+                // Keep tiles sharp - simple triangle fan
                 for (let i = 0; i < boundary.length; i++) {
                     const P = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
                     const N = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
                     
-                    // Create beveled edge by adding intermediate points
-                    const edgeCenter = P.clone().add(N).divideScalar(2);
-                    const edgeNormal = edgeCenter.clone().normalize();
-                    
-                    // Pull edge slightly inward for beveling effect
-                    const beveledEdgeCenter = edgeCenter.clone().lerp(centerPos, bevelWidth);
-                    
-                    // Create two triangles instead of one: center->P->beveledEdge and center->beveledEdge->N
-                    
-                    // First triangle: center -> P -> beveled edge
+                    // Triangle: center -> P -> N
                     pos.push(centerPos.x, centerPos.y, centerPos.z);
                     pos.push(P.x, P.y, P.z);
-                    pos.push(beveledEdgeCenter.x, beveledEdgeCenter.y, beveledEdgeCenter.z);
-                    
-                    // Smooth normals for first triangle
-                    const centerNormal = centerPos.clone().normalize();
-                    const pNormal = smoothedBoundaryNormals[i];
-                    const edgeBevelNormal = edgeNormal.clone().lerp(centerNormal, 0.3);
-                    
-                    nrm.push(centerNormal.x, centerNormal.y, centerNormal.z);
-                    nrm.push(pNormal.x, pNormal.y, pNormal.z);
-                    nrm.push(edgeBevelNormal.x, edgeBevelNormal.y, edgeBevelNormal.z);
-                    
-                    // Second triangle: center -> beveled edge -> N
-                    pos.push(centerPos.x, centerPos.y, centerPos.z);
-                    pos.push(beveledEdgeCenter.x, beveledEdgeCenter.y, beveledEdgeCenter.z);
                     pos.push(N.x, N.y, N.z);
                     
-                    // Smooth normals for second triangle
+                    // Use smoothed normals for better lighting transitions
+                    const centerNormal = centerPos.clone().normalize();
+                    const pNormal = smoothedBoundaryNormals[i];
                     const nNormal = smoothedBoundaryNormals[(i + 1) % boundary.length];
                     
                     nrm.push(centerNormal.x, centerNormal.y, centerNormal.z);
-                    nrm.push(edgeBevelNormal.x, edgeBevelNormal.y, edgeBevelNormal.z);
+                    nrm.push(pNormal.x, pNormal.y, pNormal.z);
                     nrm.push(nNormal.x, nNormal.y, nNormal.z);
                 }
                 
@@ -529,22 +506,52 @@
                 
                 tileGroup.add(m);
 
-                // Add polygon outline with consistent elevations
+                // Add rounded corner highlighting outline
                 const outlinePos = [];
+                const cornerRadius = 0.08; // Radius for rounded corners
+                const cornerSegments = 3; // Segments per rounded corner
+                
                 for (let i = 0; i < boundary.length; i++) {
-                    const P = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
-                    outlinePos.push(P.x, P.y, P.z);
+                    const current = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
+                    const next = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
+                    const prev = boundary[(i - 1 + boundary.length) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i - 1 + boundary.length) % boundary.length]);
+                    
+                    // Calculate vectors for corner rounding
+                    const toPrev = prev.clone().sub(current).normalize();
+                    const toNext = next.clone().sub(current).normalize();
+                    
+                    // Create rounded corner
+                    const cornerStart = current.clone().add(toPrev.clone().multiplyScalar(cornerRadius));
+                    const cornerEnd = current.clone().add(toNext.clone().multiplyScalar(cornerRadius));
+                    
+                    // Add corner start point
+                    outlinePos.push(cornerStart.x, cornerStart.y, cornerStart.z);
+                    
+                    // Add rounded corner points
+                    for (let j = 1; j <= cornerSegments; j++) {
+                        const t = j / (cornerSegments + 1);
+                        const cornerPoint = cornerStart.clone().lerp(cornerEnd, t);
+                        // Curve the corner slightly
+                        const curvedPoint = cornerPoint.clone().lerp(current, 0.2 * Math.sin(t * Math.PI));
+                        outlinePos.push(curvedPoint.x, curvedPoint.y, curvedPoint.z);
+                    }
+                    
+                    // Add corner end point
+                    outlinePos.push(cornerEnd.x, cornerEnd.y, cornerEnd.z);
                 }
-                // Close the loop
-                const firstP = boundary[0].clone().multiplyScalar(radius * boundaryElevations[0]);
-                outlinePos.push(firstP.x, firstP.y, firstP.z);
+                
+                // Close the loop back to first point
+                if (outlinePos.length > 0) {
+                    outlinePos.push(outlinePos[0], outlinePos[1], outlinePos[2]);
+                }
+                
                 const outlineGeom = new THREE.BufferGeometry();
                 outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
                 const outlineMat = new THREE.LineBasicMaterial({ 
                     color: 0x000000, // black borders
                     linewidth: 2,
                     transparent: true,
-                    opacity: 0.15
+                    opacity: 0.2
                 });
                 const outline = new THREE.Line(outlineGeom, outlineMat);
                 tileGroup.add(outline);
