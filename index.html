@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Colourducation - Color Learning Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Main Menu -->
+        <div id="main-menu" class="screen active">
+            <div class="container">
+                <h1 class="title">Colourducation</h1>
+                <p class="subtitle">Learn colors through fun games!</p>
+                
+                <div class="game-modes">
+                    <button class="game-mode-btn" data-mode="math-colors">
+                        <div class="mode-icon">🔢</div>
+                        <h3>Math Colors</h3>
+                        <p>Paint by numbers using simple math!</p>
+                    </button>
+                    
+                    <button class="game-mode-btn" data-mode="color-by-number">
+                        <div class="mode-icon">🎨</div>
+                        <h3>Color by Number</h3>
+                        <p>Classic numbered coloring for kids.</p>
+                    </button>
+
+                    <button class="game-mode-btn" data-mode="hex-planet">
+                        <div class="mode-icon">🪐</div>
+                        <h3>Hex Planet</h3>
+                        <p>Build on a cute hex‑grid planet.</p>
+                    </button>
+                    
+                    <button class="game-mode-btn" data-mode="word-categories">
+                        <div class="mode-icon">📝</div>
+                        <h3>Word Categories</h3>
+                        <p>Color words by their categories!</p>
+                    </button>
+                </div>
+                
+                <button id="fullscreen-btn" class="fullscreen-btn">🖥️ Fullscreen</button>
+            </div>
+        </div>
+
+        <!-- Math Colors Game -->
+        <div id="math-colors-game" class="screen">
+            <div class="game-header">
+                <button class="back-btn" onclick="showMainMenu()">← Back</button>
+                <h2 id="paint-title">Math Colors - Paint by Numbers</h2>
+                <div class="score">Score: <span id="math-score">0</span></div>
+            </div>
+            
+            <div class="game-container">
+                <div class="color-legend">
+                    <h3>Color Key:</h3>
+                    <div class="legend-items" id="math-legend"></div>
+                </div>
+                
+                <div class="paint-canvas">
+                    <div class="picture-container" id="picture-container">
+                        <svg class="picture-svg" viewBox="0 0 480 320" xmlns="http://www.w3.org/2000/svg" aria-labelledby="svgTitle svgDesc" role="img">
+                            <title id="svgTitle">Paint by Numbers - Car</title>
+                            <desc id="svgDesc">A simple vector car split into regions labeled with math problems.</desc>
+                            <!-- Ground -->
+                            <rect x="0" y="250" width="480" height="70" fill="#f2f2f2" />
+
+                            <!-- Car body (three regions that should be 4=Green) -->
+                            <path id="region-1" class="paint-region" data-answer="4" d="M70 180 H210 Q230 180 240 200 L240 230 H70 Z" />
+                            <path id="region-2" class="paint-region" data-answer="4" d="M240 200 Q260 180 330 180 H410 V230 H240 Z" />
+                            <path id="region-3" class="paint-region" data-answer="4" d="M70 230 H410 V245 H70 Z" />
+
+                            <!-- Roof (5=Yellow) -->
+                            <path id="region-4" class="paint-region" data-answer="5" d="M140 160 L200 130 H300 L340 160 Z" />
+
+                            <!-- Windows (5=Yellow) -->
+                            <rect id="region-7" class="paint-region" data-answer="5" x="160" y="150" width="70" height="25" rx="6" />
+                            <rect id="region-8" class="paint-region" data-answer="5" x="240" y="150" width="70" height="25" rx="6" />
+
+                            <!-- Wheels (2=Teal) -->
+                            <circle id="region-5" class="paint-region" data-answer="2" cx="140" cy="250" r="28" />
+                            <circle id="region-6" class="paint-region" data-answer="2" cx="340" cy="250" r="28" />
+
+                            <!-- Headlights (1=Red) -->
+                            <rect id="region-9" class="paint-region" data-answer="1" x="60" y="205" width="18" height="12" rx="3" />
+                            <rect id="region-10" class="paint-region" data-answer="1" x="60" y="220" width="18" height="12" rx="3" />
+
+                            <!-- Bumper (6=Purple) -->
+                            <rect id="region-11" class="paint-region" data-answer="6" x="415" y="205" width="28" height="20" rx="4" />
+
+                            <!-- Door handle (3=Blue) and mirror (3=Blue) and plate (6=Purple) -->
+                            <rect id="region-12" class="paint-region" data-answer="3" x="245" y="195" width="16" height="10" rx="2" />
+                            <rect id="region-13" class="paint-region" data-answer="3" x="120" y="165" width="14" height="10" rx="2" />
+                            <rect id="region-14" class="paint-region" data-answer="6" x="420" y="220" width="20" height="10" rx="2" />
+
+                            <!-- Problem labels -->
+                            <g id="region-labels" class="region-labels">
+                                <text class="region-label" x="120" y="210">2+2</text>
+                                <text class="region-label" x="300" y="205">1+3</text>
+                                <text class="region-label" x="200" y="240">3+1</text>
+                                <text class="region-label" x="240" y="150">2+3</text>
+                                <text class="region-label" x="185" y="168">3+2</text>
+                                <text class="region-label" x="265" y="168">2+3</text>
+                                <text class="region-label" x="138" y="253">1+1</text>
+                                <text class="region-label" x="338" y="253">1+1</text>
+                                <text class="region-label" x="66" y="214">1+0</text>
+                                <text class="region-label" x="66" y="229">0+1</text>
+                                <text class="region-label" x="420" y="218">2+4</text>
+                                <text class="region-label" x="246" y="203">1+2</text>
+                                <text class="region-label" x="122" y="173">2+1</text>
+                                <text class="region-label" x="423" y="228">3+3</text>
+                            </g>
+                        </svg>
+                    </div>
+                </div>
+                
+                <div class="game-controls">
+                    <div class="color-picker">
+                        <h3>Select Color:</h3>
+                        <div class="color-options" id="color-picker"></div>
+                    </div>
+                    <div class="instructions">
+                        <p>Click on a section to paint it with the selected color!</p>
+                        <p>
+                            <button id="toggle-labels" class="option-btn" style="margin-top:10px">Numbers: On</button>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Word Categories Game -->
+        <div id="word-categories-game" class="screen">
+            <div class="game-header">
+                <button class="back-btn" onclick="showMainMenu()">← Back</button>
+                <h2>Word Categories</h2>
+                <div class="score">Score: <span id="word-score">0</span></div>
+            </div>
+            
+            <div class="game-container">
+                <div class="color-legend">
+                    <h3>Category Colors:</h3>
+                    <div class="legend-items" id="word-legend"></div>
+                </div>
+                
+                <div class="word-grid">
+                    <div class="words-container" id="word-container"></div>
+                </div>
+                
+                <div class="game-controls">
+                    <div class="current-word">
+                        <h3>Select the category for: <span id="current-word-text"></span></h3>
+                        <div class="category-options" id="category-options"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hex Planet Game -->
+        <div id="hex-planet-game" class="screen">
+            <div class="game-header">
+                <button class="back-btn" onclick="showMainMenu()">← Back</button>
+                <h2>Hex Planet</h2>
+                <div class="score">Items: <span id="hex-item-count">0</span></div>
+            </div>
+            <div class="hex-planet-wrapper">
+                <canvas id="hex-canvas"></canvas>
+                <div class="hex-ui">
+                    <div class="palette">
+                        <button class="palette-item" data-item="tree">🌳</button>
+                        <button class="palette-item" data-item="house">🏠</button>
+                        <button class="palette-item" data-item="car">🚗</button>
+                        <button class="palette-item" data-item="flag">🚩</button>
+                        <button id="hex-clear" class="palette-item">🧹</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

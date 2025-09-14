@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hex Planet Prototype</title>
+    <style>
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background: #050520; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        #gameCanvas { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100vw; 
+            height: 100vh; 
+            display: block; 
+        }
+        #regenButton {
+            position: fixed; 
+            top: 20px; 
+            left: 20px; 
+            z-index: 100;
+            padding: 12px 16px; 
+            font-size: 16px; 
+            border-radius: 8px;
+            border: 2px solid #ffffff44; 
+            background: #111428; 
+            color: #fff;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        #regenButton:hover { 
+            transform: translateY(-1px); 
+            box-shadow: 0 10px 26px rgba(0,0,0,0.45); 
+            background: #1a1b3a;
+        }
+        #info {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            color: #fff;
+            background: rgba(17, 20, 40, 0.8);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            max-width: 200px;
+        }
+        
+        #settings {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-width: 200px;
+        }
+        
+        #settings h3 {
+            margin: 0 0 12px 0;
+            color: #333;
+            font-size: 16px;
+        }
+        
+        .setting-group {
+            margin-bottom: 12px;
+        }
+        
+        .setting-group label {
+            display: block;
+            color: #555;
+            font-size: 12px;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        
+        .setting-group input[type="range"] {
+            width: 100%;
+            margin-bottom: 4px;
+        }
+        
+        .setting-value {
+            font-size: 12px;
+            color: #777;
+            text-align: right;
+        }
+        
+        .setting-group select {
+            width: 100%;
+            padding: 4px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <button id="regenButton">Generate New Planet</button>
+    <div id="info">
+        <div>🖱️ Drag to rotate</div>
+        <div>🖱️ Click tiles to place objects</div>
+        <div>🎲 Generate new planets</div>
+    </div>
+    
+    <div id="settings">
+        <h3>Planet Settings</h3>
+        
+        <div class="setting-group">
+            <label>Hex Count</label>
+            <input type="range" id="hexCount" min="100" max="10000" value="1000" step="100">
+            <div class="setting-value" id="hexCountValue">1000</div>
+        </div>
+        
+        <div class="setting-group">
+            <label>Planet Scale</label>
+            <input type="range" id="planetScale" min="20" max="50" value="30" step="1">
+            <div class="setting-value" id="planetScaleValue">30</div>
+        </div>
+        
+        <div class="setting-group">
+            <label>Land Ratio</label>
+            <input type="range" id="landRatio" min="10" max="70" value="35" step="5">
+            <div class="setting-value" id="landRatioValue">35%</div>
+        </div>
+        
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        
+        // Planet generation settings
+        let planetSettings = {
+            hexCount: 1000,
+            planetScale: 30,
+            landRatio: 35
+        };
+
+        // Create geodesic sphere with proper dual hexagonal tiles (based on your example)
+        function createSphereTiles(radius, targetHexCount) {
+            console.log('Creating geodesic sphere for', targetHexCount, 'target tiles');
+            
+            // Map target count to subdivision level
+            let detail;
+            if (targetHexCount <= 100) detail = 2;
+            else if (targetHexCount <= 300) detail = 3;
+            else if (targetHexCount <= 1000) detail = 4;
+            else if (targetHexCount <= 3000) detail = 5;
+            else detail = 6;
+            
+            console.log('Using detail level:', detail);
+            
+            // Create icosahedron geometry
+            const icosahedronGeometry = new THREE.IcosahedronGeometry(1, detail);
+            
+            // Extract vertices and faces
+            const vertices = [];
+            const positions = icosahedronGeometry.attributes.position;
+            for (let i = 0; i < positions.count; i++) {
+                vertices.push(new THREE.Vector3().fromBufferAttribute(positions, i));
+            }
+            
+            const faces = [];
+            if (icosahedronGeometry.index) {
+                for (let i = 0; i < icosahedronGeometry.index.count; i += 3) {
+                    faces.push({ 
+                        a: icosahedronGeometry.index.getX(i), 
+                        b: icosahedronGeometry.index.getX(i + 1), 
+                        c: icosahedronGeometry.index.getX(i + 2),
+                        id: i / 3
+                    });
+                }
+            } else {
+                for (let i = 0; i < positions.count; i += 3) {
+                    faces.push({ 
+                        a: i, 
+                        b: i + 1, 
+                        c: i + 2,
+                        id: i / 3
+                    });
+                }
+            }
+            
+            console.log('Generated', vertices.length, 'vertices and', faces.length, 'faces');
+            
+            // Calculate face centroids (these become our hex centers in the dual)
+            const faceCentroids = faces.map(face => {
+                const vA = vertices[face.a];
+                const vB = vertices[face.b];
+                const vC = vertices[face.c];
+                return new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3).normalize();
+            });
+            
+            // Build edge-to-faces map to find neighboring faces
+            const getVertexKey = v => `${v.x.toFixed(6)}_${v.y.toFixed(6)}_${v.z.toFixed(6)}`;
+            const edgeToFacesMap = new Map();
+            
+            faces.forEach((face, i) => {
+                const faceEdges = [
+                    [vertices[face.a], vertices[face.b]], 
+                    [vertices[face.b], vertices[face.c]], 
+                    [vertices[face.c], vertices[face.a]]
+                ];
+                
+                faceEdges.forEach(edge => {
+                    const key1 = getVertexKey(edge[0]);
+                    const key2 = getVertexKey(edge[1]);
+                    const edgeKey = key1 < key2 ? `${key1}|${key2}` : `${key2}|${key1}`;
+                    if (!edgeToFacesMap.has(edgeKey)) edgeToFacesMap.set(edgeKey, []);
+                    edgeToFacesMap.get(edgeKey).push(i);
+                });
+            });
+            
+            // Create hex tiles using the exact dual polyhedron method from the example
+            const hexTiles = [];
+            
+            // Build vertex-to-faces adjacency (which faces use each vertex)
+            const vertexToFaces = new Map();
+            faces.forEach((face, faceIndex) => {
+                [face.a, face.b, face.c].forEach(vertexIndex => {
+                    if (!vertexToFaces.has(vertexIndex)) {
+                        vertexToFaces.set(vertexIndex, []);
+                    }
+                    vertexToFaces.get(vertexIndex).push(faceIndex);
+                });
+            });
+            
+            // Create one hex tile for each vertex (dual approach)
+            vertices.forEach((vertex, vertexIndex) => {
+                const adjacentFaces = vertexToFaces.get(vertexIndex) || [];
+                
+                if (adjacentFaces.length >= 5) { // Only vertices with enough faces
+                    // Sort adjacent faces by angle around the vertex to get proper order
+                    const sortedFaces = adjacentFaces.map(faceIndex => ({
+                        faceIndex,
+                        centroid: faceCentroids[faceIndex]
+                    }));
+                    
+                    // Sort by angle around the vertex
+                    const up = vertex.clone().normalize();
+                    let right = new THREE.Vector3(1, 0, 0).cross(up).normalize();
+                    if (right.length() < 0.1) {
+                        right = new THREE.Vector3(0, 1, 0).cross(up).normalize();
+                    }
+                    const forward = up.clone().cross(right).normalize();
+                    
+                    sortedFaces.sort((a, b) => {
+                        const vecA = a.centroid.clone().sub(vertex).normalize();
+                        const vecB = b.centroid.clone().sub(vertex).normalize();
+                        const angleA = Math.atan2(vecA.dot(forward), vecA.dot(right));
+                        const angleB = Math.atan2(vecB.dot(forward), vecB.dot(right));
+                        return angleA - angleB;
+                    });
+                    
+                    // Create hex tile with ordered boundary
+                    const boundary = sortedFaces.map(item => item.centroid);
+                    
+                    hexTiles.push({
+                        id: vertexIndex,
+                        centerPoint: vertex.clone().normalize(),
+                        boundary: boundary,
+                        isPentagon: adjacentFaces.length === 5,
+                        originalVertexId: vertexIndex
+                    });
+                }
+            });
+            
+            console.log('Created', hexTiles.length, 'geodesic hex tiles');
+            console.log('Hex distribution:', hexTiles.filter(h => !h.isPentagon).length, 'hexagons,', hexTiles.filter(h => h.isPentagon).length, 'pentagons');
+            
+            icosahedronGeometry.dispose();
+            return { hexTiles, triangles: [] };
+        }
+        
+        // Create polygon vertices around a center point on the sphere
+        function createPolygonBoundary(center, size, sides = 6) {
+            const boundary = [];
+            
+            // Create a local coordinate system on the sphere
+            const up = center.clone().normalize();
+            let right = new THREE.Vector3(1, 0, 0).cross(up).normalize();
+            if (right.length() < 0.1) {
+                right = new THREE.Vector3(0, 1, 0).cross(up).normalize();
+            }
+            const forward = up.clone().cross(right).normalize();
+            
+            // Create N points around the center
+            for (let i = 0; i < sides; i++) {
+                const angle = (i / sides) * Math.PI * 2;
+                const x = Math.cos(angle) * size;
+                const y = Math.sin(angle) * size;
+                
+                const point = center.clone()
+                    .add(right.clone().multiplyScalar(x))
+                    .add(forward.clone().multiplyScalar(y))
+                    .normalize();
+                
+                boundary.push(point);
+            }
+            
+            return boundary;
+        }
+
+        // Renderer / Scene / Camera
+        const canvas = document.getElementById('gameCanvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050520);
+
+        const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+        camera.position.set(0, 32, 70);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.enablePan = false;
+        controls.minDistance = 40;
+        controls.maxDistance = 140;
+
+        function resize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h, false);
+            camera.aspect = w / h; camera.updateProjectionMatrix();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Enhanced lighting for cartoon planet
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+        scene.add(ambientLight);
+        
+        const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x2e3440, 0.8);
+        scene.add(hemisphereLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(40, 60, 30);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        // Planet container group
+        const planetGroup = new THREE.Group();
+        scene.add(planetGroup);
+
+        // Raycasting
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let currentlyHovered = null;
+
+        const highlightMaterial = new THREE.MeshToonMaterial({ color: 0xffff00 });
+
+        async function generatePlanet() {
+            // Cleanup
+            for (const child of planetGroup.children.slice()) {
+                if (child.isMesh) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                        else child.material.dispose();
+                    }
+                }
+                planetGroup.remove(child);
+            }
+
+            // Create hex tiles using current settings
+            console.log('Generating planet with settings:', planetSettings);
+            const sphereData = createSphereTiles(planetSettings.planetScale, planetSettings.hexCount);
+            const hexTiles = sphereData.hexTiles;
+            const allTriangles = sphereData.triangles;
+            console.log('Got', hexTiles.length, 'hex tiles to render');
+
+            // Materials
+            const landMaterial = new THREE.MeshToonMaterial({ color: 0x228b22 });
+            const waterMaterial = new THREE.MeshToonMaterial({ color: 0x1e90ff });
+            const mountainMaterial = new THREE.MeshToonMaterial({ color: 0x8b4513 });
+            const snowMaterial = new THREE.MeshToonMaterial({ color: 0xfffafa });
+            const desertMaterial = new THREE.MeshToonMaterial({ color: 0xdaa520 });
+
+            // Create continent seeds for realistic distribution
+            const continentSeeds = [];
+            for (let i = 0; i < 5; i++) {
+                continentSeeds.push({
+                    center: new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 1.5,
+                        (Math.random() - 0.5) * 2
+                    ).normalize(),
+                    size: 0.4 + Math.random() * 0.3
+                });
+            }
+
+            // If no hex tiles were created, something went wrong
+            if (hexTiles.length === 0) {
+                console.error('No hex tiles created! Check subdivision level and triangle generation.');
+                return;
+            }
+
+            // Build each hex tile
+            hexTiles.forEach(hexTile => {
+                const latitude = Math.asin(hexTile.centerPoint.y);
+                const isNearPole = Math.abs(latitude) > 1.2;
+                
+                let type = 'water';
+                let material = waterMaterial;
+                
+                if (isNearPole) {
+                    type = 'snow';
+                    material = snowMaterial;
+                } else {
+                    // Use land ratio setting to determine land distribution
+                    const landThreshold = (100 - planetSettings.landRatio) / 100;
+                    
+                    // Check if tile is near any continent
+                    let nearContinent = false;
+                    for (const seed of continentSeeds) {
+                        const distance = hexTile.centerPoint.distanceTo(seed.center);
+                        if (distance < seed.size) {
+                            nearContinent = true;
+                            
+                            // Vary terrain within continents
+                            const terrainRandom = Math.random();
+                            const elevation = Math.sin(hexTile.centerPoint.x * 8) * 
+                                            Math.cos(hexTile.centerPoint.y * 6) * 
+                                            Math.sin(hexTile.centerPoint.z * 10);
+                            
+                            if (elevation > 0.4 && terrainRandom > 0.7) {
+                                type = 'mountain';
+                                material = mountainMaterial;
+                            } else if (Math.abs(latitude) < 0.4 && terrainRandom > 0.9) {
+                                type = 'desert';
+                                material = desertMaterial;
+                            } else {
+                                type = 'land';
+                                material = landMaterial;
+                            }
+                            break;
+                        }
+                    }
+                    
+                    // Add small islands based on land ratio
+                    if (!nearContinent && Math.random() > landThreshold + 0.6) {
+                        type = 'land';
+                        material = landMaterial;
+                    }
+                }
+
+                // Create geometry from hex boundary (dual polyhedron approach)
+                const geometry = new THREE.BufferGeometry();
+                const positions = [];
+                const normals = [];
+                
+                if (hexTile.boundary && hexTile.boundary.length >= 3) {
+                    const center = hexTile.centerPoint.clone().multiplyScalar(planetSettings.planetScale);
+                    const centerNormal = hexTile.centerPoint.clone();
+                    
+                    // Create triangular faces from center to each boundary edge
+                    for (let i = 0; i < hexTile.boundary.length; i++) {
+                        const curr = hexTile.boundary[i].clone().multiplyScalar(planetSettings.planetScale);
+                        const next = hexTile.boundary[(i + 1) % hexTile.boundary.length].clone().multiplyScalar(planetSettings.planetScale);
+                        
+                        // Triangle: center -> current -> next
+                        positions.push(center.x, center.y, center.z);
+                        positions.push(curr.x, curr.y, curr.z);
+                        positions.push(next.x, next.y, next.z);
+                        
+                        // All vertices use proper sphere normals
+                        normals.push(centerNormal.x, centerNormal.y, centerNormal.z);
+                        normals.push(hexTile.boundary[i].x, hexTile.boundary[i].y, hexTile.boundary[i].z);
+                        normals.push(hexTile.boundary[(i + 1) % hexTile.boundary.length].x, 
+                                   hexTile.boundary[(i + 1) % hexTile.boundary.length].y, 
+                                   hexTile.boundary[(i + 1) % hexTile.boundary.length].z);
+                    }
+                }
+                
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.userData = {
+                    hexId: hexTile.id,
+                    tileCenter: hexTile.centerPoint.clone().multiplyScalar(planetSettings.planetScale + 1),
+                    tileType: type,
+                    originalMaterial: material,
+                    triangleIds: hexTile.triangleIds
+                };
+                
+                planetGroup.add(mesh);
+            });
+
+            // Add atmosphere effect
+            const atmosphereGeometry = new THREE.SphereGeometry(32, 32, 32);
+            const atmosphereMaterial = new THREE.MeshBasicMaterial({
+                color: 0x87ceeb,
+                transparent: true,
+                opacity: 0.08,
+                side: THREE.BackSide
+            });
+            const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+            planetGroup.add(atmosphere);
+        }
+
+        function polygonFanGeometry(centerUnitVec, boundaryUnitVecs, radius) {
+            const center = new THREE.Vector3().copy(centerUnitVec).multiplyScalar(radius);
+            const positions = [];
+            const normals = [];
+            for (let i = 0; i < boundaryUnitVecs.length; i++) {
+                const a = new THREE.Vector3().copy(boundaryUnitVecs[i]).multiplyScalar(radius);
+                const b = new THREE.Vector3().copy(boundaryUnitVecs[(i+1)%boundaryUnitVecs.length]).multiplyScalar(radius);
+                positions.push(center.x, center.y, center.z, a.x, a.y, a.z, b.x, b.y, b.z);
+                const n = new THREE.Vector3().copy(center).normalize();
+                normals.push(n.x, n.y, n.z, n.x, n.y, n.z, n.x, n.y, n.z);
+            }
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            geometry.computeBoundingSphere();
+            return geometry;
+        }
+
+        // Hover interaction - hover over any triangle selects the whole hex
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Raycast against all hex meshes
+            const hexMeshes = planetGroup.children.filter(child => 
+                child.userData && child.userData.hexId !== undefined
+            );
+            const hits = raycaster.intersectObjects(hexMeshes, false);
+            const hit = hits.length ? hits[0].object : null;
+            
+            if (hit !== currentlyHovered) {
+                if (currentlyHovered && currentlyHovered.userData && currentlyHovered.userData.originalMaterial) {
+                    currentlyHovered.material = currentlyHovered.userData.originalMaterial;
+                }
+                currentlyHovered = hit;
+                if (currentlyHovered && currentlyHovered.userData) {
+                    currentlyHovered.material = highlightMaterial;
+                }
+            }
+        });
+
+        // Click to place objects with variety
+        window.addEventListener('mousedown', () => {
+            if (!currentlyHovered || !currentlyHovered.userData) return;
+            if (currentlyHovered.userData.tileType === 'water') return;
+            
+            const objectTypes = [
+                { geometry: new THREE.ConeGeometry(0.8, 2.5, 8), color: 0x228b22, name: 'tree' },
+                { geometry: new THREE.BoxGeometry(1.5, 1.2, 1.5), color: 0x8b4513, name: 'house' },
+                { geometry: new THREE.CylinderGeometry(0.3, 0.3, 2, 8), color: 0xff6347, name: 'tower' },
+                { geometry: new THREE.SphereGeometry(0.6, 8, 8), color: 0xffd700, name: 'crystal' }
+            ];
+            
+            const objType = objectTypes[Math.floor(Math.random() * objectTypes.length)];
+            const obj = new THREE.Mesh(objType.geometry, new THREE.MeshToonMaterial({ color: objType.color }));
+            
+            const pos = new THREE.Vector3().copy(currentlyHovered.userData.tileCenter);
+            const normal = pos.clone().normalize();
+            obj.position.copy(pos);
+            obj.up.copy(normal);
+            obj.lookAt(0, 0, 0);
+            
+            // Add some random rotation for variety
+            obj.rotateY(Math.random() * Math.PI * 2);
+            
+            planetGroup.add(obj);
+        });
+
+        // Settings event listeners
+        function setupSettings() {
+            const hexCountSlider = document.getElementById('hexCount');
+            const planetScaleSlider = document.getElementById('planetScale');
+            const landRatioSlider = document.getElementById('landRatio');
+            
+            const hexCountValue = document.getElementById('hexCountValue');
+            const planetScaleValue = document.getElementById('planetScaleValue');
+            const landRatioValue = document.getElementById('landRatioValue');
+            
+            // Update values and regenerate on change
+            hexCountSlider.addEventListener('input', (e) => {
+                planetSettings.hexCount = parseInt(e.target.value);
+                hexCountValue.textContent = planetSettings.hexCount;
+                generatePlanet();
+            });
+            
+            planetScaleSlider.addEventListener('input', (e) => {
+                planetSettings.planetScale = parseInt(e.target.value);
+                planetScaleValue.textContent = planetSettings.planetScale;
+                generatePlanet();
+            });
+            
+            landRatioSlider.addEventListener('input', (e) => {
+                planetSettings.landRatio = parseInt(e.target.value);
+                landRatioValue.textContent = planetSettings.landRatio + '%';
+                generatePlanet();
+            });
+            
+        }
+
+        // Regenerate button
+        document.getElementById('regenButton').addEventListener('click', () => {
+            generatePlanet();
+        });
+
+        // Initialize settings
+        setupSettings();
+
+        // Initial planet generation
+        console.log('Starting initial planet generation...');
+        generatePlanet().then(() => {
+            console.log('Initial planet generation complete');
+        }).catch(err => {
+            console.error('Planet generation failed:', err);
+        });
+
+        // Animate
+        (function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        })();
+    </script>
+</body>
+</html>
+
+

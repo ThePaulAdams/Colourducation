@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hex Planet - Dual Geodesic Wireframe</title>
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        .info { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; font-family: system-ui, sans-serif; pointer-events: none; }
+        .ui {
+            position: absolute; left: 16px; bottom: 16px; z-index: 10;
+            background: rgba(255,255,255,0.9); color: #111; padding: 12px 14px;
+            border-radius: 10px; font-family: system-ui, sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        .ui label { font-size: 12px; color: #444; display: block; margin-bottom: 6px; }
+        .ui input[type=range] { width: 240px; }
+        .value { font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="info">Drag to Rotate, Scroll to Zoom</div>
+    <div class="ui">
+        <label>Tile density (detail): <span class="value" id="detailValue">5</span></label>
+        <input type="range" id="detail" min="0" max="20" step="1" value="5" />
+    </div>
+
+    <!-- Three.js and controls (non-module for easy file:// usage) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 32);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.08;
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.35); scene.add(ambient);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.9); dir.position.set(20, 30, 10); scene.add(dir);
+
+        const radius = 15;
+        let solidSphere = null;
+        let wireframe = null;
+
+        function disposeObject(obj) {
+            if (!obj) return;
+            obj.traverse?.(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                    else child.material.dispose();
+                }
+            });
+            scene.remove(obj);
+        }
+
+        function buildPlanet(detail) {
+            // Clean previous
+            disposeObject(solidSphere); disposeObject(wireframe);
+
+            // Base icosahedron
+            const geom = new THREE.IcosahedronGeometry(radius, detail);
+
+            // Solid base (dark)
+            solidSphere = new THREE.Mesh(geom.clone(), new THREE.MeshPhongMaterial({ color: 0x0d1020, shininess: 12, specular: 0x111111 }));
+            scene.add(solidSphere);
+
+            // Build dual wireframe from face centroids
+            const vertices = [];
+            const pos = geom.attributes.position;
+            for (let i = 0; i < pos.count; i++) vertices.push(new THREE.Vector3().fromBufferAttribute(pos, i));
+
+            const faces = [];
+            if (geom.index) {
+                for (let i = 0; i < geom.index.count; i += 3) {
+                    faces.push({ a: geom.index.getX(i), b: geom.index.getX(i + 1), c: geom.index.getX(i + 2) });
+                }
+            } else {
+                for (let i = 0; i < pos.count; i += 3) faces.push({ a: i, b: i + 1, c: i + 2 });
+            }
+
+            // Face centroids
+            const centroids = faces.map(f => new THREE.Vector3().add(vertices[f.a]).add(vertices[f.b]).add(vertices[f.c]).divideScalar(3).normalize().multiplyScalar(radius * 1.0005));
+
+            const key = v => `${v.x.toFixed(6)}_${v.y.toFixed(6)}_${v.z.toFixed(6)}`;
+            const edgeToFaces = new Map();
+            faces.forEach((f, idx) => {
+                [[f.a, f.b], [f.b, f.c], [f.c, f.a]].forEach(([iA, iB]) => {
+                    const k1 = key(vertices[iA]); const k2 = key(vertices[iB]);
+                    const ek = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`;
+                    if (!edgeToFaces.has(ek)) edgeToFaces.set(ek, []);
+                    edgeToFaces.get(ek).push(idx);
+                });
+            });
+
+            const linePoints = [];
+            for (const pair of edgeToFaces.values()) {
+                if (pair.length === 2) {
+                    linePoints.push(centroids[pair[0]].clone(), centroids[pair[1]].clone());
+                }
+            }
+
+            const wireGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x6aa3ff, linewidth: 2 });
+            wireframe = new THREE.LineSegments(wireGeom, wireMat);
+            scene.add(wireframe);
+
+            // Dispose original geom (we cloned for solid)
+            geom.dispose();
+        }
+
+        // UI
+        const detailSlider = document.getElementById('detail');
+        const detailValue = document.getElementById('detailValue');
+        function setDetail(val) { detailValue.textContent = val; buildPlanet(parseInt(val, 10)); }
+        detailSlider.addEventListener('input', e => setDetail(e.target.value));
+
+        // Initial
+        setDetail(detailSlider.value);
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animate
+        (function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        })();
+    </script>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Geodesic Sphere</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        .info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">Drag to Rotate, Scroll to Zoom</div>
+
+    <!-- Import utility libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- 1. Scene, Camera, and Renderer Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // --- 2. Create the Sphere Geometry ---
+        const radius = 15;
+        const detail = 5; // A good balance of detail and performance
+        const icosahedronGeometry = new THREE.IcosahedronGeometry(radius, detail);
+
+        // A. Solid base sphere
+        const solidMaterial = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+        const solidSphere = new THREE.Mesh(icosahedronGeometry, solidMaterial);
+        scene.add(solidSphere);
+
+        // B. Calculate the dual geometry (hexagonal wireframe)
+        const vertices = [];
+        const positions = icosahedronGeometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+            vertices.push(new THREE.Vector3().fromBufferAttribute(positions, i));
+        }
+
+        const faces = [];
+        if (icosahedronGeometry.index) {
+            for (let i = 0; i < icosahedronGeometry.index.count; i += 3) {
+                faces.push({ a: icosahedronGeometry.index.getX(i), b: icosahedronGeometry.index.getX(i + 1), c: icosahedronGeometry.index.getX(i + 2) });
+            }
+        } else {
+            for (let i = 0; i < positions.count; i += 3) {
+                faces.push({ a: i, b: i + 1, c: i + 2 });
+            }
+        }
+
+        const faceCentroids = faces.map(face => {
+            const vA = vertices[face.a];
+            const vB = vertices[face.b];
+            const vC = vertices[face.c];
+            return new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3);
+        });
+
+        const getVertexKey = v => `${v.x.toFixed(5)}_${v.y.toFixed(5)}_${v.z.toFixed(5)}`;
+        const edgeToFacesMap = new Map();
+        faces.forEach((face, i) => {
+            const faceEdges = [[vertices[face.a], vertices[face.b]], [vertices[face.b], vertices[face.c]], [vertices[face.c], vertices[face.a]]];
+            faceEdges.forEach(edge => {
+                const key1 = getVertexKey(edge[0]);
+                const key2 = getVertexKey(edge[1]);
+                const edgeKey = key1 < key2 ? `${key1}|${key2}` : `${key2}|${key1}`;
+                if (!edgeToFacesMap.has(edgeKey)) edgeToFacesMap.set(edgeKey, []);
+                edgeToFacesMap.get(edgeKey).push(i);
+            });
+        });
+
+        const wireframeEdges = [];
+        for (const faceIndices of edgeToFacesMap.values()) {
+            if (faceIndices.length === 2) {
+                const centroid1 = faceCentroids[faceIndices[0]];
+                const centroid2 = faceCentroids[faceIndices[1]];
+                wireframeEdges.push(centroid1.clone().normalize().multiplyScalar(radius * 1.001));
+                wireframeEdges.push(centroid2.clone().normalize().multiplyScalar(radius * 1.001));
+            }
+        }
+
+        const wireframeGeom = new THREE.BufferGeometry().setFromPoints(wireframeEdges);
+        const wireframeMat = new THREE.LineBasicMaterial({ color: 0x888888 });
+        const wireframe = new THREE.LineSegments(wireframeGeom, wireframeMat);
+        scene.add(wireframe);
+
+        // --- 3. Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- 4. Event Listeners ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, false);
+
+        // --- Start the application ---
+        animate();
+    </script>
+</body>
+</html>
+
