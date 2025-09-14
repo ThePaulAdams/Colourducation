@@ -33,6 +33,9 @@
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
             <span id="seedLbl" class="value"></span>
         </div>
+        <div style="margin-top:10px;">
+            <span class="value" id="zoomInfo">Zoom: 50</span>
+        </div>
     </div>
 
     <!-- Three.js and controls (non-module for easy file:// usage) -->
@@ -363,10 +366,17 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        // Update zoom display
+        function updateZoomDisplay() {
+            const distance = camera.position.distanceTo(controls.target);
+            document.getElementById('zoomInfo').textContent = `Zoom: ${distance.toFixed(1)}`;
+        }
+
         // Animate
         (function animate() {
             requestAnimationFrame(animate);
             controls.update();
+            updateZoomDisplay();
             renderer.render(scene, camera);
         })();
     </script>
