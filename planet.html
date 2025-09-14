@@ -34,7 +34,7 @@
             <span id="seedLbl" class="value"></span>
         </div>
         <div style="margin-top:10px;">
-            <span class="value" id="zoomInfo">Zoom: 500</span>
+            <span class="value" id="zoomInfo">Zoom: 30</span>
         </div>
     </div>
 
@@ -47,7 +47,7 @@
         // Scene setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
-        camera.position.set(0, 0, 500);
+        camera.position.set(0, 0, 30);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
@@ -155,7 +155,7 @@
             for (let i = 0; i < pos.count; i++) vertices.push(new THREE.Vector3().fromBufferAttribute(pos, i));
 
             // Handle both indexed and non-indexed geometry
-            const faces = [];
+        const faces = [];
             if (geom.index) {
                 // Indexed geometry - use indices
                 for (let i = 0; i < geom.index.count; i += 3) {
@@ -325,14 +325,29 @@
                 // Create polygon (hexagon for most vertices, pentagon for 12 vertices)
                 const boundary = sortedCentroids.map(s => s.centroid.clone().normalize());
                 
-                // Build triangle fan from center to boundary points
+                // Build triangle fan from center to boundary points with consistent elevation
                 const pos = [];
                 const nrm = [];
                 const centerPos = center.clone().multiplyScalar(radius * shell);
                 
+                // Calculate boundary point elevations based on their vertex positions
+                const boundaryElevations = boundary.map(boundaryPoint => {
+                    // Find the closest vertex index for this boundary point
+                    let closestVertexIdx = 0;
+                    let minDist = Infinity;
+                    for (let vi = 0; vi < vertices.length; vi++) {
+                        const dist = boundaryPoint.distanceTo(vertices[vi].clone().normalize());
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestVertexIdx = vi;
+                        }
+                    }
+                    return vertexElevations[closestVertexIdx];
+                });
+                
                 for (let i = 0; i < boundary.length; i++) {
-                    const P = boundary[i].clone().multiplyScalar(radius * shell);
-                    const N = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * shell);
+                    const P = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
+                    const N = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
                     
                     // Triangle: center -> P -> N
                     pos.push(centerPos.x, centerPos.y, centerPos.z);
@@ -442,14 +457,14 @@
                 const m = new THREE.Mesh(g, mat);
                 tileGroup.add(m);
 
-                // Add polygon outline
+                // Add polygon outline with consistent elevations
                 const outlinePos = [];
                 for (let i = 0; i < boundary.length; i++) {
-                    const P = boundary[i].clone().multiplyScalar(radius * shell);
+                    const P = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
                     outlinePos.push(P.x, P.y, P.z);
                 }
                 // Close the loop
-                const firstP = boundary[0].clone().multiplyScalar(radius * shell);
+                const firstP = boundary[0].clone().multiplyScalar(radius * boundaryElevations[0]);
                 outlinePos.push(firstP.x, firstP.y, firstP.z);
                 const outlineGeom = new THREE.BufferGeometry();
                 outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
