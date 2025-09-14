@@ -48,8 +48,13 @@
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
         camera.position.set(0, 0, 30);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance"
+        });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Better quality on high-DPI displays
         document.body.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -462,12 +467,14 @@
                 tilesCreated++;
                 
                 // Create solid triangle tile
-                // Use Lambert material for smooth lighting with custom normals
-                const mat = new THREE.MeshLambertMaterial({ 
+                // Use Phong material for smoother lighting and better edge interpolation
+                const mat = new THREE.MeshPhongMaterial({ 
                     color: tileColor, 
                     transparent: false,
                     opacity: 1.0,
-                    side: THREE.DoubleSide
+                    side: THREE.DoubleSide,
+                    shininess: 10,
+                    specular: 0x111111
                 });
                 const m = new THREE.Mesh(g, mat);
                 
@@ -493,7 +500,7 @@
                     color: 0x000000, // black borders
                     linewidth: 2,
                     transparent: true,
-                    opacity: 0.3
+                    opacity: 0.15
                 });
                 const outline = new THREE.Line(outlineGeom, outlineMat);
                 tileGroup.add(outline);
