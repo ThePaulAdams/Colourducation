@@ -72,6 +72,11 @@
         let wireframe = null;
         let tileGroup = null; // holds colored tiles
         let lastDetail = 12;
+        
+        // Hover system
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let hoveredTile = null;
 
         // biome settings with seed
         const settings = {
@@ -140,6 +145,10 @@
             console.log('buildPlanet()', { detail, settings: { ...settings } });
             // reseed simplex with current seed to ensure determinism across rebuilds
             simplex = new SimplexNoise(settings.seed.toString());
+            
+            // Clear hover state
+            hoveredTile = null;
+            
             // Clean previous
             disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup);
 
@@ -461,6 +470,11 @@
                     side: THREE.DoubleSide
                 });
                 const m = new THREE.Mesh(g, mat);
+                
+                // Store original color for hover system
+                m.userData.originalColor = tileColor;
+                m.userData.tileId = vi; // unique tile identifier
+                
                 tileGroup.add(m);
 
                 // Add polygon outline with consistent elevations
@@ -544,6 +558,40 @@
         setDetail(detailSlider.value);
 
         // Resize
+        // Mouse hover functionality
+        function onMouseMove(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update raycaster
+            raycaster.setFromCamera(mouse, camera);
+            
+            if (tileGroup) {
+                // Find intersections
+                const intersects = raycaster.intersectObjects(tileGroup.children, false);
+                
+                // Reset previous hover
+                if (hoveredTile) {
+                    hoveredTile.material.color.setHex(hoveredTile.userData.originalColor);
+                    hoveredTile = null;
+                }
+                
+                // Apply new hover
+                if (intersects.length > 0) {
+                    const tile = intersects[0].object;
+                    if (tile.userData && tile.userData.originalColor !== undefined) {
+                        hoveredTile = tile;
+                        // Bright yellow highlight
+                        tile.material.color.setHex(0xFFFF00);
+                    }
+                }
+            }
+        }
+        
+        // Add mouse event listener
+        renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+        
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
