@@ -126,7 +126,10 @@
             const geom = new THREE.IcosahedronGeometry(radius, detail);
 
             // Solid base (dark)
-            solidSphere = new THREE.Mesh(geom.clone(), new THREE.MeshPhongMaterial({ color: 0x0d1020, shininess: 12, specular: 0x111111 }));
+            // Slightly smaller solid so tiles sit above it
+            const baseGeom = geom.clone();
+            baseGeom.scale(0.995, 0.995, 0.995);
+            solidSphere = new THREE.Mesh(baseGeom, new THREE.MeshPhongMaterial({ color: 0x0d1020, shininess: 10, specular: 0x0f0f0f }));
             scene.add(solidSphere);
 
             // Build dual wireframe from face centroids
@@ -165,9 +168,9 @@
             }
 
             const wireGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-            const wireMat = new THREE.LineBasicMaterial({ color: 0x6aa3ff, linewidth: 2 });
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x6aa3ff, linewidth: 1, transparent: true, opacity: 0.35 });
             wireframe = new THREE.LineSegments(wireGeom, wireMat);
-            scene.add(wireframe);
+            // wireframe will be added AFTER tiles so it sits on top with translucency
 
             // Dispose original geom (we cloned for solid)
             geom.dispose();
@@ -275,6 +278,7 @@
                 tileGroup.add(outline);
             });
             scene.add(tileGroup);
+            scene.add(wireframe);
         }
 
         // UI
