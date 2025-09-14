@@ -5,17 +5,72 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hex Planet - Dual Geodesic Wireframe</title>
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
-        canvas { display: block; }
-        .info { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; font-family: system-ui, sans-serif; pointer-events: none; }
-        .ui {
-            position: absolute; left: 16px; bottom: 16px; z-index: 10;
-            background: rgba(255,255,255,0.9); color: #111; padding: 12px 14px;
-            border-radius: 10px; font-family: system-ui, sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .ui label { font-size: 12px; color: #444; display: block; margin-bottom: 6px; }
-        .ui input[type=range] { width: 240px; }
-        .value { font-weight: 700; }
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            overflow: hidden; 
+            background: radial-gradient(ellipse at 50% 50%, #001a35 0%, #00050a 100%);
+            font-family: 'Inter', sans-serif;
+            color: #eee;
+        }
+        canvas { display: block; }
+        .info { 
+            position: absolute; 
+            top: 10px; 
+            width: 100%; 
+            text-align: center; 
+            color: #cce7ff; 
+            font-family: 'Inter', sans-serif; 
+            pointer-events: none; 
+            font-size: 16px;
+        }
+        .ui {
+            position: absolute; 
+            left: 16px; 
+            bottom: 16px; 
+            z-index: 10;
+            background: rgba(0, 25, 50, 0.2);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cce7ff; 
+            padding: 12px 14px;
+            font-family: 'Inter', sans-serif; 
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        .ui label { 
+            font-size: 12px; 
+            color: #b3d9ff; 
+            display: block; 
+            margin-bottom: 6px; 
+        }
+        .ui input[type=range] { 
+            width: 240px;
+            accent-color: #4FC3F7;
+        }
+        .ui button {
+            background: rgba(79, 195, 247, 0.2);
+            border: 1px solid rgba(79, 195, 247, 0.4);
+            color: #cce7ff;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .ui button:hover {
+            background: rgba(79, 195, 247, 0.3);
+            border-color: rgba(79, 195, 247, 0.6);
+        }
+        .value { 
+            font-weight: 700; 
+            color: #fff;
+        }
     </style>
 </head>
 <body>
