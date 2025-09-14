@@ -154,13 +154,50 @@
             const pos = geom.attributes.position;
             for (let i = 0; i < pos.count; i++) vertices.push(new THREE.Vector3().fromBufferAttribute(pos, i));
 
-        const faces = [];
+            // Handle both indexed and non-indexed geometry
+            const faces = [];
             if (geom.index) {
+                // Indexed geometry - use indices
                 for (let i = 0; i < geom.index.count; i += 3) {
                     faces.push({ a: geom.index.getX(i), b: geom.index.getX(i + 1), c: geom.index.getX(i + 2) });
                 }
             } else {
-                for (let i = 0; i < pos.count; i += 3) faces.push({ a: i, b: i + 1, c: i + 2 });
+                // Non-indexed geometry - build vertex map by comparing positions
+                const vertexMap = new Map(); // maps vertex key to index
+                const uniqueVertices = [];
+                
+                for (let i = 0; i < pos.count; i++) {
+                    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+                    const key = `${v.x.toFixed(8)}_${v.y.toFixed(8)}_${v.z.toFixed(8)}`;
+                    
+                    if (!vertexMap.has(key)) {
+                        vertexMap.set(key, uniqueVertices.length);
+                        uniqueVertices.push(v);
+                    }
+                }
+                
+                // Rebuild vertices array with unique vertices
+                vertices.length = 0;
+                vertices.push(...uniqueVertices);
+                
+                // Build faces using mapped indices
+                for (let i = 0; i < pos.count; i += 3) {
+                    const vA = new THREE.Vector3().fromBufferAttribute(pos, i);
+                    const vB = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+                    const vC = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+                    
+                    const keyA = `${vA.x.toFixed(8)}_${vA.y.toFixed(8)}_${vA.z.toFixed(8)}`;
+                    const keyB = `${vB.x.toFixed(8)}_${vB.y.toFixed(8)}_${vB.z.toFixed(8)}`;
+                    const keyC = `${vC.x.toFixed(8)}_${vC.y.toFixed(8)}_${vC.z.toFixed(8)}`;
+                    
+                    faces.push({ 
+                        a: vertexMap.get(keyA), 
+                        b: vertexMap.get(keyB), 
+                        c: vertexMap.get(keyC) 
+                    });
+                }
+                
+                console.log('Merged', pos.count, 'vertices into', vertices.length, 'unique vertices');
             }
 
             // Face centroids
