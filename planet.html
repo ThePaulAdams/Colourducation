@@ -497,9 +497,24 @@
             });
             scene.add(tileGroup);
             console.log(`Created ${tilesCreated} tiles, counted ${countTotal} biomes, skipped ${skippedCount} vertices`);
-            // update debug label
+            // update debug label with nice formatting
             const lbl = document.getElementById('seedLbl');
-            if (lbl) lbl.textContent = `seed:${settings.seed} | tiles:${countTotal} ocean:${countOcean} land:${countLand} ice:${countIce} desert:${countDesert}`;
+            if (lbl) {
+                lbl.innerHTML = `
+                    <div style="font-size: 11px; line-height: 1.3;">
+                        <div><strong>Seed:</strong> ${settings.seed}</div>
+                        <div><strong>Tiles:</strong> ${countTotal}</div>
+                        <div style="margin-top: 2px;">
+                            <span style="color: #0066FF;">Ocean: ${countOcean}</span> | 
+                            <span style="color: #00CC00;">Land: ${countLand}</span>
+                        </div>
+                        <div>
+                            <span style="color: #FFFFFF; background: #666; padding: 0 2px;">Ice: ${countIce}</span> | 
+                            <span style="color: #FF6600;">Desert: ${countDesert}</span>
+                        </div>
+                    </div>
+                `;
+            }
             // No wireframe needed - tiles have their own borders
         }
 
