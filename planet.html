@@ -288,11 +288,14 @@
                         // Create shore distance - closer to 1 when approaching shore
                         vDistanceToShore = max(0.0, alignment);
                         
-                        // Only create waves near the shore edge (high alignment)
-                        float shoreEffect = smoothstep(0.3, 1.0, vDistanceToShore);
+                        // Create smooth falloff from shore to deep ocean
+                        // Close to shore (alignment > 0.3): full wave effects
+                        // Far from shore (alignment < 0): no wave effects
+                        // Gradual transition in between
+                        float shoreEffect = smoothstep(-0.2, 0.8, vDistanceToShore);
                         
                         // Distance along the wave direction (from center toward shore)
-                        float waveProgress = distanceFromCenter * vDistanceToShore;
+                        float waveProgress = distanceFromCenter * max(0.0, vDistanceToShore);
                         
                         // Create multiple wave layers moving toward shore
                         float wave1 = sin(waveProgress * 12.0 - time * rippleSpeed * 8.0) * 0.5;
@@ -302,7 +305,7 @@
                         // Combine waves with shore effect
                         vRipple = (wave1 + wave2 + wave3) * shoreEffect * rippleIntensity;
                         
-                        // Apply stronger displacement near shore
+                        // Apply displacement with smooth falloff toward ocean
                         vec3 normalizedPos = normalize(position);
                         float displacement = vRipple * 0.03 * shoreEffect;
                         vec3 displacedPosition = position + normalizedPos * displacement;
@@ -322,25 +325,34 @@
                     varying float vDistanceToShore;
                     
                     void main() {
-                        // Base water color
-                        vec3 color = baseColor;
+                        // Base water color (this should match normal ocean tiles)
+                        vec3 baseWaterColor = baseColor;
                         
-                        // Stronger effects near shore
-                        float shoreIntensity = smoothstep(0.2, 1.0, vDistanceToShore);
+                        // Calculate distance-based effects with smooth falloff
+                        // vDistanceToShore: 1.0 = at shore, 0.0 = away from shore
+                        float shoreIntensity = smoothstep(0.0, 0.8, vDistanceToShore);
+                        float oceanFalloff = smoothstep(0.8, 0.0, vDistanceToShore);
                         
-                        // Add brightness variation from waves
-                        float brightness = 1.0 + vRipple * 0.4 * shoreIntensity;
-                        color *= brightness;
+                        // Start with base water color
+                        vec3 color = baseWaterColor;
                         
-                        // Add foam effect near shore
+                        // Add wave brightness variation only near shore
+                        float waveBrightness = 1.0 + vRipple * 0.4 * shoreIntensity;
+                        vec3 waveColor = baseWaterColor * waveBrightness;
+                        
+                        // Add foam effect only very close to shore
                         float foam = smoothstep(0.7, 1.0, vDistanceToShore) * 
                                     (sin(time * rippleSpeed * 4.0) * 0.1 + 0.1);
-                        color = mix(color, vec3(1.0, 1.0, 1.0), foam);
+                        waveColor = mix(waveColor, vec3(1.0, 1.0, 1.0), foam);
                         
-                        // Subtle shimmer concentrated near shore
+                        // Add shimmer concentrated near shore
                         float shimmer = sin(time * rippleSpeed * 5.0 + vPosition.x * 15.0 + vPosition.z * 15.0) 
                                       * 0.15 * shoreIntensity + 1.0;
-                        color *= shimmer;
+                        waveColor *= shimmer;
+                        
+                        // Blend between wave effects (near shore) and normal water (far from shore)
+                        // Use shoreIntensity to smoothly transition
+                        color = mix(baseWaterColor, waveColor, shoreIntensity);
                         
                         gl_FragColor = vec4(color, 1.0);
                     }
