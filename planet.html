@@ -129,6 +129,7 @@
         let trees = [];
         let treeGroup = new THREE.Group();
         let globalVertices = []; // Store vertices globally for tree generation
+        let forestVertices = []; // Store forest-suitable vertices
         const renderer = new THREE.WebGLRenderer({ 
             antialias: true,
             alpha: true,
@@ -413,23 +414,14 @@
         function generateForestTrees() {
             clearTrees();
             
-            if (!globalVertices || globalVertices.length === 0) return;
+            if (!forestVertices || forestVertices.length === 0) return;
             
             const treeDensity = settings.treeDensity || 0.3;
             const treeScale = settings.treeScale || 1.0;
             
-            // Only place trees on forest tiles (high moisture, land elevation)
-            globalVertices.forEach((vertex, index) => {
-                const elev = elevationAt(vertex);
-                const temp = temperatureAt(vertex);
-                const moist = moistureAt(vertex);
-                
-                // Forest conditions: land elevation, moderate temperature, high moisture
-                const isForest = elev > settings.seaLevel + 0.02 && 
-                               temp > 0.2 && temp < 0.8 && 
-                               moist > 0.6;
-                
-                if (isForest && Math.random() < treeDensity) {
+            // Place trees on pre-identified forest vertices
+            forestVertices.forEach((vertex) => {
+                if (Math.random() < treeDensity) {
                     const tree = createTree(2 + Math.random() * 3);
                     
                     // Position tree at vertex location
@@ -453,7 +445,7 @@
                 }
             });
             
-            console.log(`Generated ${trees.length} trees`);
+            console.log(`Generated ${trees.length} trees from ${forestVertices.length} forest vertices`);
         }
 
         // Cloud generation function
@@ -723,6 +715,7 @@
             
             // Store vertices globally for tree generation
             globalVertices = [...vertices];
+            forestVertices = []; // Reset forest vertices for new planet
 
             // Handle both indexed and non-indexed geometry
         const faces = [];
@@ -1129,6 +1122,9 @@
                         };
                         biomeType = 'forest';
                         countLand++;
+                        
+                        // Store vertex for tree generation
+                        forestVertices.push(vertex.clone());
                     }
                     else {
                         biomeType = 'grassland';
