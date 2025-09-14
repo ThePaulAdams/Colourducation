@@ -34,7 +34,7 @@
             <span id="seedLbl" class="value"></span>
         </div>
         <div style="margin-top:10px;">
-            <span class="value" id="zoomInfo">Zoom: 50</span>
+            <span class="value" id="zoomInfo">Zoom: 500</span>
         </div>
     </div>
 
@@ -46,14 +46,23 @@
     <script>
         // Scene setup
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 50);
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 0, 500);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true; controls.dampingFactor = 0.08;
+        
+        // Update zoom display function
+        function updateZoomDisplay() {
+            const distance = camera.position.distanceTo(controls.target);
+            document.getElementById('zoomInfo').textContent = `Zoom: ${distance.toFixed(1)}`;
+        }
+        
+        // Update zoom display when controls change
+        controls.addEventListener('change', updateZoomDisplay);
 
         const ambient = new THREE.AmbientLight(0xffffff, 0.35); scene.add(ambient);
         const dir = new THREE.DirectionalLight(0xffffff, 0.9); dir.position.set(20, 30, 10); scene.add(dir);
@@ -366,17 +375,10 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Update zoom display
-        function updateZoomDisplay() {
-            const distance = camera.position.distanceTo(controls.target);
-            document.getElementById('zoomInfo').textContent = `Zoom: ${distance.toFixed(1)}`;
-        }
-
         // Animate
         (function animate() {
             requestAnimationFrame(animate);
             controls.update();
-            updateZoomDisplay();
             renderer.render(scene, camera);
         })();
     </script>
