@@ -128,7 +128,7 @@
             // Solid base (dark)
             // Slightly smaller solid so tiles sit above it
             const baseGeom = geom.clone();
-            baseGeom.scale(0.995, 0.995, 0.995);
+            baseGeom.scale(0.98, 0.98, 0.98); // sink base sphere further to avoid z-fighting
             solidSphere = new THREE.Mesh(baseGeom, new THREE.MeshPhongMaterial({ color: 0x0d1020, shininess: 10, specular: 0x0f0f0f }));
             scene.add(solidSphere);
 
@@ -168,7 +168,7 @@
             }
 
             const wireGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-            const wireMat = new THREE.LineBasicMaterial({ color: 0x6aa3ff, linewidth: 1, transparent: true, opacity: 0.35 });
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x6aa3ff, linewidth: 1, transparent: true, opacity: 0.25 });
             wireframe = new THREE.LineSegments(wireGeom, wireMat);
             // wireframe will be added AFTER tiles so it sits on top with translucency
 
@@ -247,11 +247,12 @@
                 // Elevation-based extrusion for clear relief
                 const elev = elevationAt(center);
                 let extrude = (elev - settings.seaLevel);
-                extrude = Math.max(-0.015, Math.min(0.06, extrude * 0.12));
-                const C = center.clone().multiplyScalar(radius*(1.0002 + extrude));
+                extrude = Math.max(-0.03, Math.min(0.08, extrude * 0.18));
+                const shell = 1.02 + extrude; // clearly above base sphere
+                const C = center.clone().multiplyScalar(radius*shell);
                 for (let i=0;i<boundary.length;i++) {
-                    const P = boundary[i].clone().multiplyScalar(radius*(1.0002 + extrude));
-                    const N = boundary[(i+1)%boundary.length].clone().multiplyScalar(radius*(1.0002 + extrude));
+                    const P = boundary[i].clone().multiplyScalar(radius*shell);
+                    const N = boundary[(i+1)%boundary.length].clone().multiplyScalar(radius*shell);
                     pos.push(C.x,C.y,C.z, P.x,P.y,P.z, N.x,N.y,N.z);
                     nrm.push(center.x,center.y,center.z, boundary[i].x,boundary[i].y,boundary[i].z,
                              boundary[(i+1)%boundary.length].x,boundary[(i+1)%boundary.length].y,boundary[(i+1)%boundary.length].z);
@@ -278,13 +279,13 @@
                 // slight shading by elevation/extrusion
                 tileColor = shade(tileColor, 0.9 + extrude*2.2);
                 const emissive = 0x000000;
-                const mat = new THREE.MeshLambertMaterial({ color: tileColor, emissive, emissiveIntensity: 0.12, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+                const mat = new THREE.MeshLambertMaterial({ color: tileColor, emissive, emissiveIntensity: 0.12, flatShading: true });
                 const m = new THREE.Mesh(g, mat);
                 tileGroup.add(m);
 
                 // Outline for visual definition
                 const loopPts = [];
-                for (let i=0;i<boundary.length;i++) loopPts.push(boundary[i].clone().multiplyScalar(radius*(1.00022 + extrude)));
+                for (let i=0;i<boundary.length;i++) loopPts.push(boundary[i].clone().multiplyScalar(radius*(shell + 0.0001)));
                 const outlineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
                 outlineGeom.setIndex([...Array(loopPts.length).keys()].flatMap((i)=>[i,(i+1)%loopPts.length]));
                 // Coastline highlight
