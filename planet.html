@@ -38,6 +38,7 @@
     <!-- Three.js and controls (non-module for easy file:// usage) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
 
     <script>
         // Scene setup
@@ -67,6 +68,7 @@
             noiseAmp: 1.2,
             seed: Math.floor(Math.random() * 1e9)
         };
+        let simplex = null; // seeded Simplex noise instance
 
         function setSeedLabel() {
             document.getElementById('seedLbl').textContent = `seed:${settings.seed}`;
@@ -85,18 +87,22 @@
             return new THREE.Vector3(r*Math.cos(t), z, r*Math.sin(t)).normalize();
         }
 
-        // cheap value noise based on dot products
-        function hash3(x, y, z) {
-            return (Math.sin(x*12.9898 + y*78.233 + z*45.164 + settings.seed*0.0001) * 43758.5453) % 1;
-        }
+        // Seeded Simplex noise and fBm
         function noise3(v, scale) {
             const s = scale || 1;
-            return 0.5 + 0.5 * Math.sin((v.x*s)*2.1 + Math.sin((v.y*s)*2.3 + (v.z*s)*2.5));
+            // simplex returns -1..1; map to 0..1
+            return 0.5 + 0.5 * simplex.noise3D(v.x*s, v.y*s, v.z*s);
         }
-        function fbm(v, scale, octaves) {
-            let a = 0; let f = 1; let amp = 0.5;
-            for (let i=0;i<octaves;i++) { a += amp * noise3(v.clone().multiplyScalar(scale*f)); f *= 2; amp *= 0.5; }
-            return a;
+        function fbm(v, baseScale, octaves) {
+            let value = 0;
+            let frequency = baseScale;
+            let amplitude = 0.5;
+            for (let i = 0; i < octaves; i++) {
+                value += amplitude * noise3(v, frequency);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+            return value; // 0..1
         }
 
         function shade(color, factor) {
@@ -120,6 +126,8 @@
 
         function buildPlanet(detail) {
             console.log('buildPlanet()', { detail, settings: { ...settings } });
+            // reseed simplex with current seed to ensure determinism across rebuilds
+            simplex = new SimplexNoise(settings.seed.toString());
             // Clean previous
             disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup);
 
@@ -194,16 +202,24 @@
             const wind = new THREE.Vector3(0.7, 0.0, -0.3).normalize();
 
             function elevationAt(n) {
-                // plate distance (nearest seed)
+                // Base plate distance (nearest seed), 0..1
                 let minD = 2;
                 for (const s of seeds) { const d = 1 - n.dot(s); if (d < minD) minD = d; }
-                // Stronger continental signal
-                let base = 1 - (minD / 2);
-                base = Math.pow(base, 1.25); // sharpen continents
-                // Noise detail
-                const ridges = Math.abs(0.5 - fbm(n, 6.0, 3)) * 2.0; // 0..1 ridges
-                const nois = fbm(n, 2.5, 4) * settings.noiseAmp * 0.35 + ridges * 0.15;
-                let h = base * 0.8 + nois;
+                let base = 1 - (minD / 2); // closer to a seed => higher
+                base = Math.pow(base, 1.35); // sharpen continental shelves
+
+                // fBm noise: frequency tied to noiseAmp for stronger visual impact
+                const freq = 1.8 + settings.noiseAmp * 1.2;
+                const detailNoise = fbm(n, freq, 4); // 0..1
+                // Center noise around 0 and scale by noiseAmp
+                const noiseTerm = (detailNoise - 0.5) * (0.9 * settings.noiseAmp);
+
+                // Subtle ridge component for mountains
+                const ridges = Math.abs(fbm(n, 3.6, 3) - 0.5) * 2.0; // 0..1
+                const ridgeTerm = ridges * 0.15;
+
+                let h = base * 0.85 + noiseTerm + ridgeTerm;
+                // Normalize and clamp
                 return Math.max(0, Math.min(1, h));
             }
 
