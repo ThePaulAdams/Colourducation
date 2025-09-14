@@ -860,8 +860,10 @@
                 }
                 const m = new THREE.Mesh(g, mat);
                 
-                // Store original color for hover system
+                // Store original color and material info for hover system
                 m.userData.originalColor = tileColor;
+                m.userData.originalMaterial = mat;
+                m.userData.isShaderMaterial = mat instanceof THREE.ShaderMaterial;
                 m.userData.tileId = vi; // unique tile identifier
                 m.userData.isTile = true; // mark as hoverable tile
                 
@@ -1095,7 +1097,7 @@
                 
                 // Reset previous hover
                 if (hoveredTile) {
-                    hoveredTile.material.color.setHex(hoveredTile.userData.originalColor);
+                    resetTileColor(hoveredTile);
                     hoveredTile = null;
                 }
                 
@@ -1108,11 +1110,41 @@
                         const tile = intersects[i].object;
                         if (tile.userData && tile.userData.isTile && tile.userData.originalColor !== undefined) {
                             hoveredTile = tile;
-                            // Bright yellow highlight
-                            tile.material.color.setHex(0xFFFF00);
+                            // Apply highlight based on material type
+                            setTileHighlight(tile);
                             break;
                         }
                     }
+                }
+            }
+        }
+        
+        // Helper function to reset tile color based on material type
+        function resetTileColor(tile) {
+            if (tile.userData.isShaderMaterial) {
+                // For shader materials, reset the baseColor uniform
+                if (tile.material.uniforms && tile.material.uniforms.baseColor) {
+                    tile.material.uniforms.baseColor.value.setHex(tile.userData.originalColor);
+                }
+            } else {
+                // For regular materials, reset the color property
+                if (tile.material.color) {
+                    tile.material.color.setHex(tile.userData.originalColor);
+                }
+            }
+        }
+        
+        // Helper function to set tile highlight based on material type
+        function setTileHighlight(tile) {
+            if (tile.userData.isShaderMaterial) {
+                // For shader materials, modify the baseColor uniform
+                if (tile.material.uniforms && tile.material.uniforms.baseColor) {
+                    tile.material.uniforms.baseColor.value.setHex(0xFFFF00);
+                }
+            } else {
+                // For regular materials, modify the color property
+                if (tile.material.color) {
+                    tile.material.color.setHex(0xFFFF00);
                 }
             }
         }
