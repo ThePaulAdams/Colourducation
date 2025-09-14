@@ -119,6 +119,7 @@
         }
 
         function buildPlanet(detail) {
+            console.log('buildPlanet()', { detail, settings: { ...settings } });
             // Clean previous
             disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup);
 
@@ -309,14 +310,44 @@
         const noiseValue = document.getElementById('noiseValue');
         const regenBtn = document.getElementById('regen');
 
-        function setDetail(val) { detailValue.textContent = val; lastDetail = parseInt(val,10); buildPlanet(lastDetail); }
-        function updateAndRebuild() { setSeedLabel(); buildPlanet(lastDetail); }
+        function setDetail(val) {
+            detailValue.textContent = val;
+            lastDetail = parseInt(val,10);
+            console.log('detail changed ->', lastDetail);
+            buildPlanet(lastDetail);
+        }
+        function updateAndRebuild(reason) {
+            if (reason) console.log('rebuild reason:', reason);
+            setSeedLabel();
+            buildPlanet(lastDetail);
+        }
 
         detailSlider.addEventListener('input', e => setDetail(e.target.value));
-        continentsSlider.addEventListener('input', e => { settings.continents = parseInt(e.target.value,10); continentsValue.textContent = settings.continents; updateAndRebuild(); });
-        seaSlider.addEventListener('input', e => { settings.seaLevel = parseFloat(e.target.value); seaValue.textContent = settings.seaLevel.toFixed(2); updateAndRebuild(); });
-        noiseSlider.addEventListener('input', e => { settings.noiseAmp = parseFloat(e.target.value); noiseValue.textContent = settings.noiseAmp.toFixed(2); updateAndRebuild(); });
-        regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild(); });
+        detailSlider.addEventListener('change', e => setDetail(e.target.value));
+
+        function onContinents(val) {
+            settings.continents = parseInt(val,10);
+            continentsValue.textContent = settings.continents;
+            updateAndRebuild('continents');
+        }
+        function onSea(val) {
+            settings.seaLevel = parseFloat(val);
+            seaValue.textContent = settings.seaLevel.toFixed(2);
+            updateAndRebuild('sea');
+        }
+        function onNoise(val) {
+            settings.noiseAmp = parseFloat(val);
+            noiseValue.textContent = settings.noiseAmp.toFixed(2);
+            updateAndRebuild('noise');
+        }
+
+        continentsSlider.addEventListener('input', e => onContinents(e.target.value));
+        continentsSlider.addEventListener('change', e => onContinents(e.target.value));
+        seaSlider.addEventListener('input', e => onSea(e.target.value));
+        seaSlider.addEventListener('change', e => onSea(e.target.value));
+        noiseSlider.addEventListener('input', e => onNoise(e.target.value));
+        noiseSlider.addEventListener('change', e => onNoise(e.target.value));
+        regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild('regen'); });
 
         // Initial
         setSeedLabel();
