@@ -134,8 +134,15 @@
             // Base icosahedron
             const geom = new THREE.IcosahedronGeometry(radius, detail);
 
-            // No base sphere - tiles will show pure colors against black space
-            solidSphere = null;
+            // Add a simple fallback sphere in case dual geometry fails
+            const fallbackGeom = new THREE.IcosahedronGeometry(radius * 0.99, detail);
+            solidSphere = new THREE.Mesh(fallbackGeom, new THREE.MeshBasicMaterial({ 
+                color: 0x222222, 
+                wireframe: true,
+                transparent: true,
+                opacity: 0.3
+            }));
+            scene.add(solidSphere);
 
             // Build dual wireframe from face centroids
             const vertices = [];
@@ -239,9 +246,15 @@
                 return 0x1b5e20; // rainforest dark
             }
 
+            console.log('Total vertices:', vertices.length, 'Total faces:', faces.length);
+            let tilesCreated = 0;
             vertices.forEach((vertex, vi) => {
                 const adj = vertexToFaces.get(vi) || [];
-                if (adj.length < 5) return; // need at least a pentagon
+                if (adj.length < 3) {
+                    console.log(`Vertex ${vi} has only ${adj.length} adjacent faces, skipping`);
+                    return; // need at least 3 faces
+                }
+                tilesCreated++;
                 const center = vertex.clone().normalize();
                 const up = center.clone();
                 let right = new THREE.Vector3(1,0,0).cross(up).normalize();
@@ -317,6 +330,7 @@
                 tileGroup.add(outline);
             });
             scene.add(tileGroup);
+            console.log(`Created ${tilesCreated} tiles, counted ${countTotal} biomes`);
             // update debug label
             const lbl = document.getElementById('seedLbl');
             if (lbl) lbl.textContent = `seed:${settings.seed} | tiles:${countTotal} ocean:${countOcean} land:${countLand} ice:${countIce} desert:${countDesert}`;
