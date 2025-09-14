@@ -227,26 +227,35 @@
             console.log('Total vertices:', vertices.length, 'Total faces:', faces.length);
             let tilesCreated = 0;
             
-            // Create tiles directly from triangular faces (simpler approach)
+            // Pre-calculate elevation for all vertices to maintain connectivity
+            const vertexElevations = vertices.map(v => {
+                const normalized = v.clone().normalize();
+                const elev = elevationAt(normalized);
+                let extrude = (elev - settings.seaLevel);
+                extrude = Math.max(-0.03, Math.min(0.08, extrude * 0.18));
+                return 1.0 + extrude;
+            });
+            
+            // Create tiles directly from triangular faces with shared vertex elevations
             faces.forEach((face, faceIndex) => {
             const vA = vertices[face.a];
             const vB = vertices[face.b];
             const vC = vertices[face.c];
                 
+                // Use pre-calculated vertex elevations for seamless connection
+                const shellA = vertexElevations[face.a];
+                const shellB = vertexElevations[face.b];
+                const shellC = vertexElevations[face.c];
+                
                 // Face center for biome calculation
                 const center = new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3).normalize();
-                
-                // Elevation-based extrusion
                 const elev = elevationAt(center);
-                let extrude = (elev - settings.seaLevel);
-                extrude = Math.max(-0.03, Math.min(0.08, extrude * 0.18));
-                const shell = 1.0 + extrude;
                 
-                // Create triangle geometry
+                // Create triangle geometry with per-vertex elevations
                 const pos = [
-                    vA.x * radius * shell, vA.y * radius * shell, vA.z * radius * shell,
-                    vB.x * radius * shell, vB.y * radius * shell, vB.z * radius * shell,
-                    vC.x * radius * shell, vC.y * radius * shell, vC.z * radius * shell
+                    vA.x * radius * shellA, vA.y * radius * shellA, vA.z * radius * shellA,
+                    vB.x * radius * shellB, vB.y * radius * shellB, vB.z * radius * shellB,
+                    vC.x * radius * shellC, vC.y * radius * shellC, vC.z * radius * shellC
                 ];
                 const nrm = [
                     vA.x, vA.y, vA.z,
@@ -291,12 +300,12 @@
                 const m = new THREE.Mesh(g, mat);
                 tileGroup.add(m);
 
-                // Add triangle outline
+                // Add triangle outline using per-vertex elevations
                 const outlinePos = [
-                    vA.x * radius * shell, vA.y * radius * shell, vA.z * radius * shell,
-                    vB.x * radius * shell, vB.y * radius * shell, vB.z * radius * shell,
-                    vC.x * radius * shell, vC.y * radius * shell, vC.z * radius * shell,
-                    vA.x * radius * shell, vA.y * radius * shell, vA.z * radius * shell  // close loop
+                    vA.x * radius * shellA, vA.y * radius * shellA, vA.z * radius * shellA,
+                    vB.x * radius * shellB, vB.y * radius * shellB, vB.z * radius * shellB,
+                    vC.x * radius * shellC, vC.y * radius * shellC, vC.z * radius * shellC,
+                    vA.x * radius * shellA, vA.y * radius * shellA, vA.z * radius * shellA  // close loop
                 ];
                 const outlineGeom = new THREE.BufferGeometry();
                 outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
