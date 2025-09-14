@@ -227,7 +227,16 @@
             console.log('Total vertices:', vertices.length, 'Total faces:', faces.length);
             let tilesCreated = 0;
             
-            // Pre-calculate elevation for all vertices to maintain connectivity
+            // Build vertex-to-faces mapping for dual polyhedron (hexagons/pentagons)
+            const vertexToFaces = new Map();
+            faces.forEach((face, faceIndex) => {
+                [face.a, face.b, face.c].forEach(vi => {
+                    if (!vertexToFaces.has(vi)) vertexToFaces.set(vi, []);
+                    vertexToFaces.get(vi).push(faceIndex);
+                });
+            });
+            
+            // Pre-calculate elevation for all vertices
             const vertexElevations = vertices.map(v => {
                 const normalized = v.clone().normalize();
                 const elev = elevationAt(normalized);
@@ -236,32 +245,60 @@
                 return 1.0 + extrude;
             });
             
-            // Create tiles directly from triangular faces with shared vertex elevations
-            faces.forEach((face, faceIndex) => {
+            // Create hexagonal/pentagonal tiles using dual polyhedron approach
+            vertices.forEach((vertex, vi) => {
+                const adj = vertexToFaces.get(vi) || [];
+                if (adj.length < 3) return; // need at least 3 faces
+                
+                const center = vertex.clone().normalize();
+                const elev = elevationAt(center);
+                const shell = vertexElevations[vi];
+                
+                // Get face centroids that surround this vertex
+                const faceCentroids = adj.map(faceIdx => {
+                    const face = faces[faceIdx];
             const vA = vertices[face.a];
             const vB = vertices[face.b];
             const vC = vertices[face.c];
+                    return new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3).normalize();
+                });
                 
-                // Use pre-calculated vertex elevations for seamless connection
-                const shellA = vertexElevations[face.a];
-                const shellB = vertexElevations[face.b];
-                const shellC = vertexElevations[face.c];
+                // Sort face centroids by angle around the vertex to create proper polygon
+                const up = center.clone();
+                let right = new THREE.Vector3(1,0,0).cross(up).normalize();
+                if (right.length() < 0.1) right = new THREE.Vector3(0,1,0).cross(up).normalize();
+                const forward = up.clone().cross(right).normalize();
                 
-                // Face center for biome calculation
-                const center = new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3).normalize();
-                const elev = elevationAt(center);
+                const sortedCentroids = faceCentroids.map((c, i) => ({ centroid: c, index: i }))
+                    .sort((a, b) => {
+                        const vecA = a.centroid.clone().sub(center).normalize();
+                        const vecB = b.centroid.clone().sub(center).normalize();
+                        const angA = Math.atan2(vecA.dot(forward), vecA.dot(right));
+                        const angB = Math.atan2(vecB.dot(forward), vecB.dot(right));
+                        return angA - angB;
+                    });
                 
-                // Create triangle geometry with per-vertex elevations
-                const pos = [
-                    vA.x * radius * shellA, vA.y * radius * shellA, vA.z * radius * shellA,
-                    vB.x * radius * shellB, vB.y * radius * shellB, vB.z * radius * shellB,
-                    vC.x * radius * shellC, vC.y * radius * shellC, vC.z * radius * shellC
-                ];
-                const nrm = [
-                    vA.x, vA.y, vA.z,
-                    vB.x, vB.y, vB.z,
-                    vC.x, vC.y, vC.z
-                ];
+                // Create polygon (hexagon for most vertices, pentagon for 12 vertices)
+                const boundary = sortedCentroids.map(s => s.centroid.clone().normalize());
+                
+                // Build triangle fan from center to boundary points
+                const pos = [];
+                const nrm = [];
+                const centerPos = center.clone().multiplyScalar(radius * shell);
+                
+                for (let i = 0; i < boundary.length; i++) {
+                    const P = boundary[i].clone().multiplyScalar(radius * shell);
+                    const N = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * shell);
+                    
+                    // Triangle: center -> P -> N
+                    pos.push(centerPos.x, centerPos.y, centerPos.z);
+                    pos.push(P.x, P.y, P.z);
+                    pos.push(N.x, N.y, N.z);
+                    
+                    nrm.push(center.x, center.y, center.z);
+                    nrm.push(boundary[i].x, boundary[i].y, boundary[i].z);
+                    nrm.push(boundary[(i + 1) % boundary.length].x, boundary[(i + 1) % boundary.length].y, boundary[(i + 1) % boundary.length].z);
+                }
                 
                 const g = new THREE.BufferGeometry();
                 g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -361,13 +398,15 @@
                 const m = new THREE.Mesh(g, mat);
                 tileGroup.add(m);
 
-                // Add triangle outline using per-vertex elevations
-                const outlinePos = [
-                    vA.x * radius * shellA, vA.y * radius * shellA, vA.z * radius * shellA,
-                    vB.x * radius * shellB, vB.y * radius * shellB, vB.z * radius * shellB,
-                    vC.x * radius * shellC, vC.y * radius * shellC, vC.z * radius * shellC,
-                    vA.x * radius * shellA, vA.y * radius * shellA, vA.z * radius * shellA  // close loop
-                ];
+                // Add polygon outline
+                const outlinePos = [];
+                for (let i = 0; i < boundary.length; i++) {
+                    const P = boundary[i].clone().multiplyScalar(radius * shell);
+                    outlinePos.push(P.x, P.y, P.z);
+                }
+                // Close the loop
+                const firstP = boundary[0].clone().multiplyScalar(radius * shell);
+                outlinePos.push(firstP.x, firstP.y, firstP.z);
                 const outlineGeom = new THREE.BufferGeometry();
                 outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
                 const outlineMat = new THREE.LineBasicMaterial({ 
