@@ -339,25 +339,48 @@
                 // Create polygon (hexagon for most vertices, pentagon for 12 vertices)
                 let boundary = sortedCentroids.map(s => s.centroid.clone().normalize());
                 
-                // Add rounded edges by subdividing and creating smooth curves
+                // Create truly rounded corners using circular arc approximation
                 const roundedBoundary = [];
-                const roundingFactor = 0.08; // How much to round the corners
+                const cornerRadius = 0.15; // Radius of the rounded corners
+                const arcSegments = 4; // Number of segments per rounded corner
                 
                 for (let i = 0; i < boundary.length; i++) {
                     const prev = boundary[(i - 1 + boundary.length) % boundary.length];
                     const current = boundary[i];
                     const next = boundary[(i + 1) % boundary.length];
                     
-                    // Create a slightly rounded corner by interpolating
-                    const toPrev = prev.clone().sub(current).normalize().multiplyScalar(roundingFactor);
-                    const toNext = next.clone().sub(current).normalize().multiplyScalar(roundingFactor);
+                    // Calculate vectors to adjacent points
+                    const toPrev = prev.clone().sub(current).normalize();
+                    const toNext = next.clone().sub(current).normalize();
                     
-                    // Add points around the corner for smooth rounding
-                    const corner1 = current.clone().add(toPrev.clone().multiplyScalar(0.7)).normalize();
-                    const corner2 = current.clone().lerp(center, 0.03).normalize(); // Slight inward pull
-                    const corner3 = current.clone().add(toNext.clone().multiplyScalar(0.7)).normalize();
+                    // Calculate the angle between vectors
+                    const angle = Math.acos(Math.max(-1, Math.min(1, toPrev.dot(toNext))));
                     
-                    roundedBoundary.push(corner1, corner2, corner3);
+                    // Skip rounding for very sharp or very flat angles
+                    if (angle < 0.3 || angle > 2.8) {
+                        roundedBoundary.push(current);
+                        continue;
+                    }
+                    
+                    // Create rounded corner with circular arc
+                    const cornerStart = current.clone().add(toPrev.clone().multiplyScalar(cornerRadius));
+                    const cornerEnd = current.clone().add(toNext.clone().multiplyScalar(cornerRadius));
+                    
+                    // Add the start of the rounded corner
+                    roundedBoundary.push(cornerStart.normalize());
+                    
+                    // Generate arc points between start and end
+                    for (let j = 1; j < arcSegments; j++) {
+                        const t = j / arcSegments;
+                        // Spherical interpolation for smooth arc on sphere surface
+                        const arcPoint = cornerStart.clone().lerp(cornerEnd, t);
+                        // Pull slightly toward the corner center for curvature
+                        const curvePoint = arcPoint.clone().lerp(current, 0.3 * Math.sin(t * Math.PI));
+                        roundedBoundary.push(curvePoint.normalize());
+                    }
+                    
+                    // Add the end of the rounded corner
+                    roundedBoundary.push(cornerEnd.normalize());
                 }
                 boundary = roundedBoundary;
                 
