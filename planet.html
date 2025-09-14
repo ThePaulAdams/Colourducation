@@ -354,9 +354,14 @@
                     pos.push(P.x, P.y, P.z);
                     pos.push(N.x, N.y, N.z);
                     
-                    nrm.push(center.x, center.y, center.z);
-                    nrm.push(boundary[i].x, boundary[i].y, boundary[i].z);
-                    nrm.push(boundary[(i + 1) % boundary.length].x, boundary[(i + 1) % boundary.length].y, boundary[(i + 1) % boundary.length].z);
+                    // Smooth normals - point outward from sphere center (creates smooth curved surface)
+                    const centerNormal = centerPos.clone().normalize();
+                    const pNormal = P.clone().normalize();
+                    const nNormal = N.clone().normalize();
+                    
+                    nrm.push(centerNormal.x, centerNormal.y, centerNormal.z);
+                    nrm.push(pNormal.x, pNormal.y, pNormal.z);
+                    nrm.push(nNormal.x, nNormal.y, nNormal.z);
                 }
                 
                 const g = new THREE.BufferGeometry();
@@ -448,7 +453,8 @@
                 tilesCreated++;
                 
                 // Create solid triangle tile
-                const mat = new THREE.MeshBasicMaterial({ 
+                // Use Lambert material for smooth lighting with custom normals
+                const mat = new THREE.MeshLambertMaterial({ 
                     color: tileColor, 
                     transparent: false,
                     opacity: 1.0,
