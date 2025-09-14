@@ -187,19 +187,10 @@
             // Dispose original geom (we cloned for solid)
             geom.dispose();
 
-            // Build filled tiles with biome colors (dual polygon fans)
+            // Build filled tiles with biome colors (simple triangular faces)
             tileGroup = new THREE.Group();
             // debug counts
             let countOcean = 0, countLand = 0, countIce = 0, countDesert = 0, countTotal = 0;
-            const vertexToFaces = new Map();
-            faces.forEach((face, faceIndex) => {
-                [face.a, face.b, face.c].forEach(vi => {
-                    if (!vertexToFaces.has(vi)) vertexToFaces.set(vi, []);
-                    vertexToFaces.get(vi).push(faceIndex);
-                });
-            });
-            console.log('vertexToFaces map size:', vertexToFaces.size);
-            console.log('Sample vertex adjacencies:', Array.from(vertexToFaces.entries()).slice(0, 5).map(([v, faces]) => `vertex ${v}: ${faces.length} faces`));
 
             // Continents seeds
             const rng = makeRng(settings.seed);
@@ -228,87 +219,64 @@
                 return Math.max(0, Math.min(1, h));
             }
 
-            function biomeColor(n) {
-                const elev = elevationAt(n);
-                if (elev < settings.seaLevel) return 0x0b3d91; // ocean deep
-                const lat = Math.abs(n.y);
-                let temp = 1 - Math.pow(lat, 1.35) - elev*0.5; // lapse rate stronger
-                temp = Math.max(0, Math.min(1, temp));
-                const moist = Math.max(0, Math.min(1, 0.55*fbm(n, 1.8, 3) + 0.45*Math.max(0, n.dot(wind))))
-                               * (0.9 + 0.3*(1-elev));
-                // Elevation bands
-                if (elev > settings.seaLevel + 0.42) return 0xd4d8db; // high mountain light
-                if (elev > settings.seaLevel + 0.34) return 0x8b7355; // mountain
-                // Temperature/Moisture biomes (high-contrast palette)
-                if (temp < 0.15) return 0xf5f9ff; // ice
-                if (temp < 0.3 && moist > 0.5) return 0xb7d3f2; // cold wet (taiga snow)
-                if (moist < 0.2 && temp > 0.35) return 0xd9b36f; // desert
-                if (moist < 0.4) return 0x9dc183; // steppe/grassland
-                if (moist < 0.65) return 0x3e8744; // forest
-                return 0x1b5e20; // rainforest dark
-            }
-
             console.log('Total vertices:', vertices.length, 'Total faces:', faces.length);
             let tilesCreated = 0;
-            vertices.forEach((vertex, vi) => {
-                const adj = vertexToFaces.get(vi) || [];
-                if (adj.length < 1) {
-                    console.log(`Vertex ${vi} has only ${adj.length} adjacent faces, skipping`);
-                    return; // need at least 1 face
-                }
-                tilesCreated++;
-                const center = vertex.clone().normalize();
-                const up = center.clone();
-                let right = new THREE.Vector3(1,0,0).cross(up).normalize();
-                if (right.length() < 0.1) right = new THREE.Vector3(0,1,0).cross(up).normalize();
-                const forward = up.clone().cross(right).normalize();
-                const ordered = adj.map(idx => ({ idx, c: centroids[idx] }))
-                    .sort((A,B)=>{
-                        const a = A.c.clone().sub(center).normalize();
-                        const b = B.c.clone().sub(center).normalize();
-                        const angA = Math.atan2(a.dot(forward), a.dot(right));
-                        const angB = Math.atan2(b.dot(forward), b.dot(right));
-                        return angA-angB;
-                    });
-                const boundary = ordered.map(o => o.c.clone().normalize());
-                // Build triangle fan
-                const pos = [];
-                const nrm = [];
-                // Elevation-based extrusion for clear relief
+            
+            // Create tiles directly from triangular faces (simpler approach)
+            faces.forEach((face, faceIndex) => {
+                const vA = vertices[face.a];
+                const vB = vertices[face.b]; 
+                const vC = vertices[face.c];
+                
+                // Face center for biome calculation
+                const center = new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3).normalize();
+                
+                // Elevation-based extrusion
                 const elev = elevationAt(center);
                 let extrude = (elev - settings.seaLevel);
                 extrude = Math.max(-0.03, Math.min(0.08, extrude * 0.18));
-                const shell = 1.0 + extrude; // tiles at radius with elevation
-                const C = center.clone().multiplyScalar(radius*shell);
-                for (let i=0;i<boundary.length;i++) {
-                    const P = boundary[i].clone().multiplyScalar(radius*shell);
-                    const N = boundary[(i+1)%boundary.length].clone().multiplyScalar(radius*shell);
-                    pos.push(C.x,C.y,C.z, P.x,P.y,P.z, N.x,N.y,N.z);
-                    nrm.push(center.x,center.y,center.z, boundary[i].x,boundary[i].y,boundary[i].z,
-                             boundary[(i+1)%boundary.length].x,boundary[(i+1)%boundary.length].y,boundary[(i+1)%boundary.length].z);
-                }
+                const shell = 1.0 + extrude;
+                
+                // Create triangle geometry
+                const pos = [
+                    vA.x * radius * shell, vA.y * radius * shell, vA.z * radius * shell,
+                    vB.x * radius * shell, vB.y * radius * shell, vB.z * radius * shell,
+                    vC.x * radius * shell, vC.y * radius * shell, vC.z * radius * shell
+                ];
+                const nrm = [
+                    vA.x, vA.y, vA.z,
+                    vB.x, vB.y, vB.z,
+                    vC.x, vC.y, vC.z
+                ];
+                
                 const g = new THREE.BufferGeometry();
-                g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
-                g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm,3));
-                // High-contrast biome coloring inline (uses computed elev/temp/moist)
+                g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+                
+                // Biome coloring
                 const isOcean = elev < settings.seaLevel;
                 let tileColor;
                 if (isOcean) {
-                    // Electric blue ocean
-                    tileColor = 0x0066FF;
+                    tileColor = 0x0066FF; // Electric blue ocean
                     countOcean++;
                 } else {
                     const lat = Math.abs(center.y);
-                    let temp = 1 - Math.pow(lat, 1.25) - elev*0.5; // colder at poles & altitude
+                    let temp = 1 - Math.pow(lat, 1.25) - elev*0.5;
                     temp = Math.max(0, Math.min(1, temp));
                     const moist = Math.max(0, Math.min(1, 0.55*fbm(center, 1.8, 3) + 0.45*Math.max(0, center.dot(wind))))
                                    * (0.9 + 0.3*(1-elev));
-                    if (temp < 0.18 || elev > settings.seaLevel + 0.45) { tileColor = 0xFFFFFF; countIce++; } // pure white ice/snow
-                    else if (moist < 0.20 && temp > 0.35) { tileColor = 0xFF6600; countDesert++; } // bright orange desert
-                    else { tileColor = 0x00CC00; countLand++; } // vivid green land
+                    if (temp < 0.18 || elev > settings.seaLevel + 0.45) { 
+                        tileColor = 0xFFFFFF; countIce++; // pure white ice/snow
+                    } else if (moist < 0.20 && temp > 0.35) { 
+                        tileColor = 0xFF6600; countDesert++; // bright orange desert
+                    } else { 
+                        tileColor = 0x00CC00; countLand++; // vivid green land
+                    }
                 }
                 countTotal++;
-                // Use solid, opaque colors for board game look
+                tilesCreated++;
+                
+                // Create solid triangle tile
                 const mat = new THREE.MeshBasicMaterial({ 
                     color: tileColor, 
                     transparent: false,
@@ -318,15 +286,18 @@
                 const m = new THREE.Mesh(g, mat);
                 tileGroup.add(m);
 
-                // Bold hex outlines for board game look
-                const loopPts = [];
-                for (let i=0;i<boundary.length;i++) loopPts.push(boundary[i].clone().multiplyScalar(radius*(shell + 0.001)));
-                loopPts.push(loopPts[0]); // close the loop
-                const outlineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+                // Add triangle outline
+                const outlinePos = [
+                    vA.x * radius * shell, vA.y * radius * shell, vA.z * radius * shell,
+                    vB.x * radius * shell, vB.y * radius * shell, vB.z * radius * shell,
+                    vC.x * radius * shell, vC.y * radius * shell, vC.z * radius * shell,
+                    vA.x * radius * shell, vA.y * radius * shell, vA.z * radius * shell  // close loop
+                ];
+                const outlineGeom = new THREE.BufferGeometry();
+                outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
                 const outlineMat = new THREE.LineBasicMaterial({ 
                     color: 0x000000, // black borders
-                    linewidth: 3,
-                    transparent: false
+                    linewidth: 2
                 });
                 const outline = new THREE.Line(outlineGeom, outlineMat);
                 tileGroup.add(outline);
