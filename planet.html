@@ -474,6 +474,7 @@
                 // Store original color for hover system
                 m.userData.originalColor = tileColor;
                 m.userData.tileId = vi; // unique tile identifier
+                m.userData.isTile = true; // mark as hoverable tile
                 
                 tileGroup.add(m);
 
@@ -583,8 +584,13 @@
             raycaster.setFromCamera(mouse, camera);
             
             if (tileGroup) {
-                // Find intersections
-                const intersects = raycaster.intersectObjects(tileGroup.children, false);
+                // Filter to only tile meshes (not outlines)
+                const tileMeshes = tileGroup.children.filter(child => 
+                    child.userData && child.userData.isTile === true
+                );
+                
+                // Find intersections with tile meshes only
+                const intersects = raycaster.intersectObjects(tileMeshes, false);
                 
                 // Reset previous hover
                 if (hoveredTile) {
@@ -592,13 +598,19 @@
                     hoveredTile = null;
                 }
                 
-                // Apply new hover
+                // Apply new hover - find the closest tile intersection
                 if (intersects.length > 0) {
-                    const tile = intersects[0].object;
-                    if (tile.userData && tile.userData.originalColor !== undefined) {
-                        hoveredTile = tile;
-                        // Bright yellow highlight
-                        tile.material.color.setHex(0xFFFF00);
+                    // Sort by distance and take the closest
+                    intersects.sort((a, b) => a.distance - b.distance);
+                    
+                    for (let i = 0; i < intersects.length; i++) {
+                        const tile = intersects[i].object;
+                        if (tile.userData && tile.userData.isTile && tile.userData.originalColor !== undefined) {
+                            hoveredTile = tile;
+                            // Bright yellow highlight
+                            tile.material.color.setHex(0xFFFF00);
+                            break;
+                        }
                     }
                 }
             }
