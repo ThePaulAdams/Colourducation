@@ -134,15 +134,8 @@
             // Base icosahedron
             const geom = new THREE.IcosahedronGeometry(radius, detail);
 
-            // Add a simple fallback sphere in case dual geometry fails
-            const fallbackGeom = new THREE.IcosahedronGeometry(radius * 0.99, detail);
-            solidSphere = new THREE.Mesh(fallbackGeom, new THREE.MeshBasicMaterial({ 
-                color: 0x222222, 
-                wireframe: true,
-                transparent: true,
-                opacity: 0.3
-            }));
-            scene.add(solidSphere);
+            // No fallback sphere needed - tiles render directly
+            solidSphere = null;
 
             // Build dual wireframe from face centroids
             const vertices = [];
