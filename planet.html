@@ -359,6 +359,26 @@
                     return vertexElevations[closestVertexIdx];
                 });
                 
+                // Calculate smoothed normals for boundary vertices by averaging with neighbors
+                const smoothedBoundaryNormals = boundary.map((boundaryPoint, idx) => {
+                    // Start with the base normal pointing outward from sphere center
+                    const baseNormal = boundaryPoint.clone().normalize();
+                    
+                    // Find nearby vertices and average their normals for smoothing
+                    let avgNormal = baseNormal.clone();
+                    let count = 1;
+                    
+                    for (let vi = 0; vi < vertices.length; vi++) {
+                        const dist = boundaryPoint.distanceTo(vertices[vi].clone().normalize());
+                        if (dist < 0.1) { // Close enough to influence normal
+                            avgNormal.add(vertices[vi].clone().normalize());
+                            count++;
+                        }
+                    }
+                    
+                    return avgNormal.divideScalar(count).normalize();
+                });
+                
                 for (let i = 0; i < boundary.length; i++) {
                     const P = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
                     const N = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
@@ -368,10 +388,10 @@
                     pos.push(P.x, P.y, P.z);
                     pos.push(N.x, N.y, N.z);
                     
-                    // Smooth normals - point outward from sphere center (creates smooth curved surface)
+                    // Use smoothed normals for better lighting transitions
                     const centerNormal = centerPos.clone().normalize();
-                    const pNormal = P.clone().normalize();
-                    const nNormal = N.clone().normalize();
+                    const pNormal = smoothedBoundaryNormals[i];
+                    const nNormal = smoothedBoundaryNormals[(i + 1) % boundary.length];
                     
                     nrm.push(centerNormal.x, centerNormal.y, centerNormal.z);
                     nrm.push(pNormal.x, pNormal.y, pNormal.z);
