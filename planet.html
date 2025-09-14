@@ -21,14 +21,14 @@
 <body>
     <div class="info">Drag to Rotate, Scroll to Zoom</div>
     <div class="ui">
-        <label>Tile density (detail): <span class="value" id="detailValue">12</span></label>
-        <input type="range" id="detail" min="0" max="20" step="1" value="12" />
-        <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">7</span></label>
-        <input type="range" id="continents" min="3" max="24" step="1" value="7" />
+        <label>Tile density (detail): <span class="value" id="detailValue">16</span></label>
+        <input type="range" id="detail" min="0" max="20" step="1" value="16" />
+        <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">5</span></label>
+        <input type="range" id="continents" min="3" max="24" step="1" value="5" />
         <label style="margin-top:10px">Sea level: <span class="value" id="seaValue">0.80</span></label>
         <input type="range" id="sea" min="0" max="1" step="0.01" value="0.8" />
-        <label style="margin-top:10px">Noise: <span class="value" id="noiseValue">0.35</span></label>
-        <input type="range" id="noise" min="0" max="3" step="0.05" value="0.35" />
+        <label style="margin-top:10px">Noise: <span class="value" id="noiseValue">0.15</span></label>
+        <input type="range" id="noise" min="0" max="3" step="0.05" value="0.15" />
         <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
             <span id="seedLbl" class="value"></span>
@@ -71,7 +71,7 @@
         let solidSphere = null;
         let wireframe = null;
         let tileGroup = null; // holds colored tiles
-        let lastDetail = 12;
+        let lastDetail = 16;
         
         // Hover system
         const raycaster = new THREE.Raycaster();
@@ -80,9 +80,9 @@
 
         // biome settings with seed
         const settings = {
-            continents: 7,
+            continents: 5,
             seaLevel: 0.8,
-            noiseAmp: 0.35,
+            noiseAmp: 0.15,
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
@@ -491,7 +491,9 @@
                 outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
                 const outlineMat = new THREE.LineBasicMaterial({ 
                     color: 0x000000, // black borders
-                    linewidth: 2
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.3
                 });
                 const outline = new THREE.Line(outlineGeom, outlineMat);
                 tileGroup.add(outline);
