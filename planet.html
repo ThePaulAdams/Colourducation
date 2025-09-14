@@ -21,8 +21,8 @@
 <body>
     <div class="info">Drag to Rotate, Scroll to Zoom</div>
     <div class="ui">
-        <label>Tile density (detail): <span class="value" id="detailValue">16</span></label>
-        <input type="range" id="detail" min="0" max="20" step="1" value="16" />
+        <label>Tile density (detail): <span class="value" id="detailValue">15</span></label>
+        <input type="range" id="detail" min="0" max="20" step="1" value="15" />
         <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">5</span></label>
         <input type="range" id="continents" min="3" max="24" step="1" value="5" />
         <label style="margin-top:10px">Sea level: <span class="value" id="seaValue">0.80</span></label>
@@ -31,12 +31,12 @@
         <input type="range" id="noise" min="0" max="3" step="0.05" value="0.15" />
         <label style="margin-top:10px">Mountain Ridges: <span class="value" id="ridgesValue">0.3</span></label>
         <input type="range" id="ridges" min="0" max="1" step="0.05" value="0.3" />
-        <label style="margin-top:10px">Outline Alpha: <span class="value" id="alphaValue">0.2</span></label>
-        <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.2" />
-        <label style="margin-top:10px">Cloud Density: <span class="value" id="cloudDensityValue">0.6</span></label>
-        <input type="range" id="cloudDensity" min="0" max="1" step="0.05" value="0.6" />
-        <label style="margin-top:10px">Cloud Opacity: <span class="value" id="cloudOpacityValue">0.5</span></label>
-        <input type="range" id="cloudOpacity" min="0" max="1" step="0.05" value="0.5" />
+        <label style="margin-top:10px">Outline Alpha: <span class="value" id="alphaValue">0.05</span></label>
+        <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.05" />
+        <label style="margin-top:10px">Cloud Density: <span class="value" id="cloudDensityValue">0.35</span></label>
+        <input type="range" id="cloudDensity" min="0" max="1" step="0.05" value="0.35" />
+        <label style="margin-top:10px">Cloud Opacity: <span class="value" id="cloudOpacityValue">0.05</span></label>
+        <input type="range" id="cloudOpacity" min="0" max="1" step="0.05" value="0.05" />
         <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
             <span id="seedLbl" class="value"></span>
@@ -67,6 +67,8 @@
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true; controls.dampingFactor = 0.08;
+        controls.minDistance = 21; // Minimum zoom distance
+        controls.maxDistance = 500; // Maximum zoom distance
         
         // Update zoom display function
         function updateZoomDisplay() {
@@ -85,7 +87,7 @@
         let wireframe = null;
         let tileGroup = null; // holds colored tiles
         let cloudSphere = null; // holds the cloud layer
-        let lastDetail = 16;
+        let lastDetail = 15;
         let cloudAnimationTime = 0;
         
         // Hover system
@@ -99,9 +101,9 @@
             seaLevel: 0.8,
             noiseAmp: 0.15,
             ridgeIntensity: 0.3,
-            outlineAlpha: 0.2,
-            cloudDensity: 0.6,
-            cloudOpacity: 0.5,
+            outlineAlpha: 0.05,
+            cloudDensity: 0.35,
+            cloudOpacity: 0.05,
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
