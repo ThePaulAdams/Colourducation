@@ -178,6 +178,8 @@
 
             // Build filled tiles with biome colors (dual polygon fans)
             tileGroup = new THREE.Group();
+            // debug counts
+            let countOcean = 0, countLand = 0, countIce = 0, countDesert = 0, countTotal = 0;
             const vertexToFaces = new Map();
             faces.forEach((face, faceIndex) => {
                 [face.a, face.b, face.c].forEach(vi => {
@@ -267,16 +269,18 @@
                 if (isOcean) {
                     // Bright ocean blue
                     tileColor = 0x2196ff;
+                    countOcean++;
                 } else {
                     const lat = Math.abs(center.y);
                     let temp = 1 - Math.pow(lat, 1.25) - elev*0.5; // colder at poles & altitude
                     temp = Math.max(0, Math.min(1, temp));
                     const moist = Math.max(0, Math.min(1, 0.55*fbm(center, 1.8, 3) + 0.45*Math.max(0, center.dot(wind))))
                                    * (0.9 + 0.3*(1-elev));
-                    if (temp < 0.18 || elev > settings.seaLevel + 0.45) tileColor = 0xFFFFFF; // bright white ice/snow
-                    else if (moist < 0.20 && temp > 0.35) tileColor = 0xF4C27A; // bright sand/desert
-                    else tileColor = 0x00FF66; // bright green land
+                    if (temp < 0.18 || elev > settings.seaLevel + 0.45) { tileColor = 0xFFFFFF; countIce++; } // bright white ice/snow
+                    else if (moist < 0.20 && temp > 0.35) { tileColor = 0xF4C27A; countDesert++; } // bright sand/desert
+                    else { tileColor = 0x00FF66; countLand++; } // bright green land
                 }
+                countTotal++;
                 // slight shading by elevation/extrusion
                 tileColor = shade(tileColor, 0.9 + extrude*2.2);
                 const emissive = 0x000000;
@@ -296,6 +300,9 @@
                 tileGroup.add(outline);
             });
             scene.add(tileGroup);
+            // update debug label
+            const lbl = document.getElementById('seedLbl');
+            if (lbl) lbl.textContent = `seed:${settings.seed} | tiles:${countTotal} ocean:${countOcean} land:${countLand} ice:${countIce} desert:${countDesert}`;
             scene.add(wireframe);
         }
 
