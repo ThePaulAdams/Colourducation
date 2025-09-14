@@ -434,17 +434,20 @@
                         
                         // Create scattered positions around the vertex
                         const normal = vertex.clone().normalize();
-                        const scatterRadius = 0.15; // Adjust this to control spread
+                        const scatterRadius = 0.6; // Increased for better tree spacing
                         
-                        // Generate random offset in tangent plane to vertex
+                        // Generate random offset in tangent plane to vertex using circular distribution
                         const tangent1 = new THREE.Vector3(1, 0, 0).cross(normal).normalize();
                         if (tangent1.length() < 0.1) { // Handle edge case where normal is parallel to (1,0,0)
                             tangent1.set(0, 1, 0).cross(normal).normalize();
                         }
                         const tangent2 = normal.clone().cross(tangent1).normalize();
                         
-                        const offsetX = (Math.random() - 0.5) * scatterRadius;
-                        const offsetY = (Math.random() - 0.5) * scatterRadius;
+                        // Use circular distribution for more natural spacing
+                        const angle = Math.random() * Math.PI * 2;
+                        const distance = Math.sqrt(Math.random()) * scatterRadius; // sqrt for uniform distribution
+                        const offsetX = Math.cos(angle) * distance;
+                        const offsetY = Math.sin(angle) * distance;
                         const offset = tangent1.clone().multiplyScalar(offsetX)
                                       .add(tangent2.clone().multiplyScalar(offsetY));
                         
