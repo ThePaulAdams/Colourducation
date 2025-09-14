@@ -379,22 +379,46 @@
                     return avgNormal.divideScalar(count).normalize();
                 });
                 
+                // Create beveled edges by adding intermediate points
+                const bevelWidth = 0.02; // How much to bevel the edges
+                
                 for (let i = 0; i < boundary.length; i++) {
                     const P = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
                     const N = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
                     
-                    // Triangle: center -> P -> N
+                    // Create beveled edge by adding intermediate points
+                    const edgeCenter = P.clone().add(N).divideScalar(2);
+                    const edgeNormal = edgeCenter.clone().normalize();
+                    
+                    // Pull edge slightly inward for beveling effect
+                    const beveledEdgeCenter = edgeCenter.clone().lerp(centerPos, bevelWidth);
+                    
+                    // Create two triangles instead of one: center->P->beveledEdge and center->beveledEdge->N
+                    
+                    // First triangle: center -> P -> beveled edge
                     pos.push(centerPos.x, centerPos.y, centerPos.z);
                     pos.push(P.x, P.y, P.z);
-                    pos.push(N.x, N.y, N.z);
+                    pos.push(beveledEdgeCenter.x, beveledEdgeCenter.y, beveledEdgeCenter.z);
                     
-                    // Use smoothed normals for better lighting transitions
+                    // Smooth normals for first triangle
                     const centerNormal = centerPos.clone().normalize();
                     const pNormal = smoothedBoundaryNormals[i];
-                    const nNormal = smoothedBoundaryNormals[(i + 1) % boundary.length];
+                    const edgeBevelNormal = edgeNormal.clone().lerp(centerNormal, 0.3);
                     
                     nrm.push(centerNormal.x, centerNormal.y, centerNormal.z);
                     nrm.push(pNormal.x, pNormal.y, pNormal.z);
+                    nrm.push(edgeBevelNormal.x, edgeBevelNormal.y, edgeBevelNormal.z);
+                    
+                    // Second triangle: center -> beveled edge -> N
+                    pos.push(centerPos.x, centerPos.y, centerPos.z);
+                    pos.push(beveledEdgeCenter.x, beveledEdgeCenter.y, beveledEdgeCenter.z);
+                    pos.push(N.x, N.y, N.z);
+                    
+                    // Smooth normals for second triangle
+                    const nNormal = smoothedBoundaryNormals[(i + 1) % boundary.length];
+                    
+                    nrm.push(centerNormal.x, centerNormal.y, centerNormal.z);
+                    nrm.push(edgeBevelNormal.x, edgeBevelNormal.y, edgeBevelNormal.z);
                     nrm.push(nNormal.x, nNormal.y, nNormal.z);
                 }
                 
