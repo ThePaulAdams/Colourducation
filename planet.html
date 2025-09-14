@@ -29,6 +29,10 @@
         <input type="range" id="sea" min="0" max="1" step="0.01" value="0.8" />
         <label style="margin-top:10px">Noise: <span class="value" id="noiseValue">0.15</span></label>
         <input type="range" id="noise" min="0" max="3" step="0.05" value="0.15" />
+        <label style="margin-top:10px">Mountain Ridges: <span class="value" id="ridgesValue">0.3</span></label>
+        <input type="range" id="ridges" min="0" max="1" step="0.05" value="0.3" />
+        <label style="margin-top:10px">Outline Alpha: <span class="value" id="alphaValue">0.2</span></label>
+        <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.2" />
         <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
             <span id="seedLbl" class="value"></span>
@@ -88,6 +92,8 @@
             continents: 5,
             seaLevel: 0.8,
             noiseAmp: 0.15,
+            ridgeIntensity: 0.3,
+            outlineAlpha: 0.2,
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
@@ -174,8 +180,8 @@
                 // Indexed geometry - use indices
                 for (let i = 0; i < geom.index.count; i += 3) {
                     faces.push({ a: geom.index.getX(i), b: geom.index.getX(i + 1), c: geom.index.getX(i + 2) });
-                }
-            } else {
+            }
+        } else {
                 // Non-indexed geometry - build vertex map by comparing positions
                 const vertexMap = new Map(); // maps vertex key to index
                 const uniqueVertices = [];
@@ -266,9 +272,24 @@
                 // Center noise around 0 and scale by noiseAmp
                 const noiseTerm = (detailNoise - 0.5) * (0.9 * settings.noiseAmp);
 
-                // Subtle ridge component for mountains
-                const ridges = Math.abs(fbm(n, 3.6, 3) - 0.5) * 2.0; // 0..1
-                const ridgeTerm = ridges * 0.15;
+                // Enhanced mountain ridge system
+                let ridgeTerm = 0;
+                if (settings.ridgeIntensity > 0) {
+                    // Primary ridge lines - sharp mountain ranges
+                    const ridge1 = Math.abs(fbm(n, 2.8, 3) - 0.5) * 2.0; // 0..1
+                    const ridge2 = Math.abs(fbm(n.clone().multiplyScalar(1.7), 3.2, 3) - 0.5) * 2.0;
+                    const ridge3 = Math.abs(fbm(n.clone().multiplyScalar(0.6), 4.1, 2) - 0.5) * 2.0;
+                    
+                    // Combine ridges with different weights
+                    const ridgePattern = (ridge1 * 0.6 + ridge2 * 0.3 + ridge3 * 0.1);
+                    
+                    // Only create ridges on land areas (higher base elevation)
+                    const landMask = Math.max(0, Math.min(1, (base - 0.3) * 2.0));
+                    
+                    // Sharp ridge peaks with valleys
+                    const sharpRidge = Math.pow(ridgePattern, 0.8);
+                    ridgeTerm = sharpRidge * settings.ridgeIntensity * landMask * 0.4;
+                }
 
                 let h = base * 0.85 + noiseTerm + ridgeTerm;
                 // Normalize and clamp
@@ -429,12 +450,16 @@
                     const grassland = { r: 0x88, g: 0xCC, b: 0x44 }; // light green
                     const forest = { r: 0x22, g: 0x88, b: 0x22 };   // dark green
                     const mountain = { r: 0x77, g: 0x55, b: 0x33 }; // brown
+                    const highMountain = { r: 0x99, g: 0x77, b: 0x55 }; // lighter brown for peaks
+                    const ridgePeak = { r: 0xAA, g: 0xAA, b: 0xAA }; // rocky gray for highest ridges
                     
                     let finalColor = grassland; // default
                     
-                    // High elevation = mountains/ice
+                    // High elevation = mountains/ice with enhanced ridge coloring
                     if (elev > settings.seaLevel + 0.35) {
                         const heightFactor = Math.min(1, (elev - settings.seaLevel - 0.35) / 0.15);
+                        const veryHighElevation = elev > settings.seaLevel + 0.5;
+                        
                         if (temp < 0.3) {
                             // Ice on high peaks
                             finalColor = {
@@ -444,7 +469,27 @@
                             };
                             if (heightFactor > 0.5) countIce++; else countLand++;
                         } else {
-                            finalColor = mountain;
+                            // Mountain ranges with different colors based on height
+                            if (veryHighElevation && heightFactor > 0.7) {
+                                // Highest peaks get rocky gray color
+                                const peakFactor = (heightFactor - 0.7) / 0.3;
+                                finalColor = {
+                                    r: Math.floor(highMountain.r + (ridgePeak.r - highMountain.r) * peakFactor),
+                                    g: Math.floor(highMountain.g + (ridgePeak.g - highMountain.g) * peakFactor),
+                                    b: Math.floor(highMountain.b + (ridgePeak.b - highMountain.b) * peakFactor)
+                                };
+                            } else if (heightFactor > 0.4) {
+                                // High mountains get lighter brown
+                                const midFactor = (heightFactor - 0.4) / 0.3;
+                                finalColor = {
+                                    r: Math.floor(mountain.r + (highMountain.r - mountain.r) * midFactor),
+                                    g: Math.floor(mountain.g + (highMountain.g - mountain.g) * midFactor),
+                                    b: Math.floor(mountain.b + (highMountain.b - mountain.b) * midFactor)
+                                };
+                            } else {
+                                // Lower mountains keep basic brown
+                                finalColor = mountain;
+                            }
                             countLand++;
                         }
                     }
@@ -551,7 +596,7 @@
                     color: 0x000000, // black borders
                     linewidth: 2,
                     transparent: true,
-                    opacity: 0.2
+                    opacity: settings.outlineAlpha
                 });
                 const outline = new THREE.Line(outlineGeom, outlineMat);
                 tileGroup.add(outline);
@@ -588,6 +633,10 @@
         const seaValue = document.getElementById('seaValue');
         const noiseSlider = document.getElementById('noise');
         const noiseValue = document.getElementById('noiseValue');
+        const ridgesSlider = document.getElementById('ridges');
+        const ridgesValue = document.getElementById('ridgesValue');
+        const alphaSlider = document.getElementById('alpha');
+        const alphaValue = document.getElementById('alphaValue');
         const regenBtn = document.getElementById('regen');
 
         function setDetail(val) {
@@ -620,6 +669,16 @@
             noiseValue.textContent = settings.noiseAmp.toFixed(2);
             updateAndRebuild('noise');
         }
+        function onRidges(val) {
+            settings.ridgeIntensity = parseFloat(val);
+            ridgesValue.textContent = settings.ridgeIntensity.toFixed(2);
+            updateAndRebuild('ridges');
+        }
+        function onAlpha(val) {
+            settings.outlineAlpha = parseFloat(val);
+            alphaValue.textContent = settings.outlineAlpha.toFixed(2);
+            updateAndRebuild('alpha');
+        }
 
         continentsSlider.addEventListener('input', e => onContinents(e.target.value));
         continentsSlider.addEventListener('change', e => onContinents(e.target.value));
@@ -627,6 +686,10 @@
         seaSlider.addEventListener('change', e => onSea(e.target.value));
         noiseSlider.addEventListener('input', e => onNoise(e.target.value));
         noiseSlider.addEventListener('change', e => onNoise(e.target.value));
+        ridgesSlider.addEventListener('input', e => onRidges(e.target.value));
+        ridgesSlider.addEventListener('change', e => onRidges(e.target.value));
+        alphaSlider.addEventListener('input', e => onAlpha(e.target.value));
+        alphaSlider.addEventListener('change', e => onAlpha(e.target.value));
         regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild('regen'); });
 
         // Initial
