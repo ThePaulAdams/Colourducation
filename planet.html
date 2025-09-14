@@ -777,8 +777,8 @@
                             finalColor = ice;
                             biomeType = 'ice';
                             countIce++;
-                        } else if (ridgeValue > 0.7 && settings.ridgeIntensity > 0.3) {
-                            // Mountain ridges - distinctive biome
+                        } else if (ridgeValue > 0.5 && settings.ridgeIntensity > 0.1) {
+                            // Mountain ridges - distinctive biome (lowered thresholds)
                             finalColor = ridge;
                             biomeType = 'ridge';
                             countRidges++;
@@ -799,16 +799,16 @@
                         biomeType = coldFactor > 0.6 ? 'ice' : 'grassland';
                         if (coldFactor > 0.6) countIce++; else countLand++;
                     }
-                    // Hot and dry = desert
-                    else if (moist < 0.3 && temp > 0.4) {
-                        const dryFactor = Math.min(1, (0.3 - moist) / 0.3 * (temp - 0.4) / 0.6);
+                    // Hot and dry = desert (made more permissive)
+                    else if (moist < 0.4 && temp > 0.3) {
+                        const dryFactor = Math.min(1, (0.4 - moist) / 0.4 * (temp - 0.3) / 0.7);
                         finalColor = {
                             r: Math.floor(grassland.r + (desert.r - grassland.r) * dryFactor),
                             g: Math.floor(grassland.g + (desert.g - grassland.g) * dryFactor),
                             b: Math.floor(grassland.b + (desert.b - grassland.b) * dryFactor)
                         };
-                        biomeType = dryFactor > 0.5 ? 'desert' : 'grassland';
-                        if (dryFactor > 0.5) countDesert++; else countLand++;
+                        biomeType = dryFactor > 0.3 ? 'desert' : 'grassland';
+                        if (dryFactor > 0.3) countDesert++; else countLand++;
                     }
                     // Wet regions = forest
                     else if (moist > 0.6) {
@@ -919,6 +919,7 @@
             });
             scene.add(tileGroup);
             console.log(`Created ${tilesCreated} tiles, counted ${countTotal} biomes, skipped ${skippedCount} vertices`);
+            console.log(`Biome counts - Ocean: ${countOcean}, Land: ${countLand}, Ice: ${countIce}, Desert: ${countDesert}, Ridges: ${countRidges}`);
             // update debug label with nice formatting
             const lbl = document.getElementById('seedLbl');
             if (lbl) {
