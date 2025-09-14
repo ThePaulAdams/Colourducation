@@ -337,52 +337,7 @@
                     });
                 
                 // Create polygon (hexagon for most vertices, pentagon for 12 vertices)
-                let boundary = sortedCentroids.map(s => s.centroid.clone().normalize());
-                
-                // Create truly rounded corners using circular arc approximation
-                const roundedBoundary = [];
-                const cornerRadius = 0.15; // Radius of the rounded corners
-                const arcSegments = 4; // Number of segments per rounded corner
-                
-                for (let i = 0; i < boundary.length; i++) {
-                    const prev = boundary[(i - 1 + boundary.length) % boundary.length];
-                    const current = boundary[i];
-                    const next = boundary[(i + 1) % boundary.length];
-                    
-                    // Calculate vectors to adjacent points
-                    const toPrev = prev.clone().sub(current).normalize();
-                    const toNext = next.clone().sub(current).normalize();
-                    
-                    // Calculate the angle between vectors
-                    const angle = Math.acos(Math.max(-1, Math.min(1, toPrev.dot(toNext))));
-                    
-                    // Skip rounding for very sharp or very flat angles
-                    if (angle < 0.3 || angle > 2.8) {
-                        roundedBoundary.push(current);
-                        continue;
-                    }
-                    
-                    // Create rounded corner with circular arc
-                    const cornerStart = current.clone().add(toPrev.clone().multiplyScalar(cornerRadius));
-                    const cornerEnd = current.clone().add(toNext.clone().multiplyScalar(cornerRadius));
-                    
-                    // Add the start of the rounded corner
-                    roundedBoundary.push(cornerStart.normalize());
-                    
-                    // Generate arc points between start and end
-                    for (let j = 1; j < arcSegments; j++) {
-                        const t = j / arcSegments;
-                        // Spherical interpolation for smooth arc on sphere surface
-                        const arcPoint = cornerStart.clone().lerp(cornerEnd, t);
-                        // Pull slightly toward the corner center for curvature
-                        const curvePoint = arcPoint.clone().lerp(current, 0.3 * Math.sin(t * Math.PI));
-                        roundedBoundary.push(curvePoint.normalize());
-                    }
-                    
-                    // Add the end of the rounded corner
-                    roundedBoundary.push(cornerEnd.normalize());
-                }
-                boundary = roundedBoundary;
+                const boundary = sortedCentroids.map(s => s.centroid.clone().normalize());
                 
                 // Build triangle fan from center to boundary points with consistent elevation
                 const pos = [];
@@ -391,22 +346,17 @@
                 
                 // Calculate boundary point elevations based on their vertex positions
                 const boundaryElevations = boundary.map(boundaryPoint => {
-                    // For rounded boundaries, interpolate elevation from nearby vertices
-                    let totalWeight = 0;
-                    let weightedElevation = 0;
-                    
-                    // Sample elevation from nearby vertices with distance weighting
+                    // Find the closest vertex index for this boundary point
+                    let closestVertexIdx = 0;
+                    let minDist = Infinity;
                     for (let vi = 0; vi < vertices.length; vi++) {
                         const dist = boundaryPoint.distanceTo(vertices[vi].clone().normalize());
-                        if (dist < 0.3) { // Only consider nearby vertices
-                            const weight = 1 / (dist + 0.01); // Avoid division by zero
-                            weightedElevation += vertexElevations[vi] * weight;
-                            totalWeight += weight;
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestVertexIdx = vi;
                         }
                     }
-                    
-                    // Fall back to center elevation if no nearby vertices found
-                    return totalWeight > 0 ? weightedElevation / totalWeight : shell;
+                    return vertexElevations[closestVertexIdx];
                 });
                 
                 for (let i = 0; i < boundary.length; i++) {
