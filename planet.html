@@ -128,6 +128,7 @@
         // Tree system variables
         let trees = [];
         let treeGroup = new THREE.Group();
+        let globalVertices = []; // Store vertices globally for tree generation
         const renderer = new THREE.WebGLRenderer({ 
             antialias: true,
             alpha: true,
@@ -412,13 +413,13 @@
         function generateForestTrees() {
             clearTrees();
             
-            if (!vertices || vertices.length === 0) return;
+            if (!globalVertices || globalVertices.length === 0) return;
             
             const treeDensity = settings.treeDensity || 0.3;
             const treeScale = settings.treeScale || 1.0;
             
             // Only place trees on forest tiles (high moisture, land elevation)
-            vertices.forEach((vertex, index) => {
+            globalVertices.forEach((vertex, index) => {
                 const elev = elevationAt(vertex);
                 const temp = temperatureAt(vertex);
                 const moist = moistureAt(vertex);
@@ -719,6 +720,9 @@
             const vertices = [];
             const pos = geom.attributes.position;
             for (let i = 0; i < pos.count; i++) vertices.push(new THREE.Vector3().fromBufferAttribute(pos, i));
+            
+            // Store vertices globally for tree generation
+            globalVertices = [...vertices];
 
             // Handle both indexed and non-indexed geometry
         const faces = [];
