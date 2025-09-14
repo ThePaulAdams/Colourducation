@@ -293,27 +293,34 @@
                     else { tileColor = 0x00CC00; countLand++; } // vivid green land
                 }
                 countTotal++;
-                // Use pure, unshaded colors for maximum contrast
-                const mat = new THREE.MeshBasicMaterial({ color: tileColor });
+                // Use solid, opaque colors for board game look
+                const mat = new THREE.MeshBasicMaterial({ 
+                    color: tileColor, 
+                    transparent: false,
+                    opacity: 1.0,
+                    side: THREE.DoubleSide
+                });
                 const m = new THREE.Mesh(g, mat);
                 tileGroup.add(m);
 
-                // Outline for visual definition
+                // Bold hex outlines for board game look
                 const loopPts = [];
-                for (let i=0;i<boundary.length;i++) loopPts.push(boundary[i].clone().multiplyScalar(radius*(shell + 0.0001)));
+                for (let i=0;i<boundary.length;i++) loopPts.push(boundary[i].clone().multiplyScalar(radius*(shell + 0.001)));
+                loopPts.push(loopPts[0]); // close the loop
                 const outlineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
-                outlineGeom.setIndex([...Array(loopPts.length).keys()].flatMap((i)=>[i,(i+1)%loopPts.length]));
-                // Coastline highlight
-                const coast = Math.abs(elev - settings.seaLevel) < 0.02;
-                const outlineMat = new THREE.LineBasicMaterial({ color: coast ? 0x88d5ff : 0x0c0f14, linewidth: coast ? 2 : 1 });
-                const outline = new THREE.LineSegments(outlineGeom, outlineMat);
+                const outlineMat = new THREE.LineBasicMaterial({ 
+                    color: 0x000000, // black borders
+                    linewidth: 3,
+                    transparent: false
+                });
+                const outline = new THREE.Line(outlineGeom, outlineMat);
                 tileGroup.add(outline);
             });
             scene.add(tileGroup);
             // update debug label
             const lbl = document.getElementById('seedLbl');
             if (lbl) lbl.textContent = `seed:${settings.seed} | tiles:${countTotal} ocean:${countOcean} land:${countLand} ice:${countIce} desert:${countDesert}`;
-            scene.add(wireframe);
+            // No wireframe needed - tiles have their own borders
         }
 
         // UI
