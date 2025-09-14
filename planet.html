@@ -23,6 +23,16 @@
     <div class="ui">
         <label>Tile density (detail): <span class="value" id="detailValue">5</span></label>
         <input type="range" id="detail" min="0" max="20" step="1" value="5" />
+        <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">6</span></label>
+        <input type="range" id="continents" min="3" max="24" step="1" value="6" />
+        <label style="margin-top:10px">Sea level: <span class="value" id="seaValue">0.45</span></label>
+        <input type="range" id="sea" min="0" max="1" step="0.01" value="0.45" />
+        <label style="margin-top:10px">Noise: <span class="value" id="noiseValue">1.2</span></label>
+        <input type="range" id="noise" min="0" max="3" step="0.05" value="1.2" />
+        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+            <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
+            <span id="seedLbl" class="value"></span>
+        </div>
     </div>
 
     <!-- Three.js and controls (non-module for easy file:// usage) -->
@@ -47,6 +57,47 @@
         const radius = 15;
         let solidSphere = null;
         let wireframe = null;
+        let tileGroup = null; // holds colored tiles
+        let lastDetail = 5;
+
+        // biome settings with seed
+        const settings = {
+            continents: 6,
+            seaLevel: 0.45,
+            noiseAmp: 1.2,
+            seed: Math.floor(Math.random() * 1e9)
+        };
+
+        function setSeedLabel() {
+            document.getElementById('seedLbl').textContent = `seed:${settings.seed}`;
+        }
+
+        // simple seeded PRNG (xorshift32)
+        function makeRng(seed) {
+            let x = seed >>> 0;
+            return function() { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return ((x >>> 0) / 4294967296); };
+        }
+
+        function randomUnitVector(rng) {
+            const z = rng() * 2 - 1;
+            const t = rng() * Math.PI * 2;
+            const r = Math.sqrt(1 - z*z);
+            return new THREE.Vector3(r*Math.cos(t), z, r*Math.sin(t)).normalize();
+        }
+
+        // cheap value noise based on dot products
+        function hash3(x, y, z) {
+            return (Math.sin(x*12.9898 + y*78.233 + z*45.164 + settings.seed*0.0001) * 43758.5453) % 1;
+        }
+        function noise3(v, scale) {
+            const s = scale || 1;
+            return 0.5 + 0.5 * Math.sin((v.x*s)*2.1 + Math.sin((v.y*s)*2.3 + (v.z*s)*2.5));
+        }
+        function fbm(v, scale, octaves) {
+            let a = 0; let f = 1; let amp = 0.5;
+            for (let i=0;i<octaves;i++) { a += amp * noise3(v.clone().multiplyScalar(scale*f)); f *= 2; amp *= 0.5; }
+            return a;
+        }
 
         function disposeObject(obj) {
             if (!obj) return;
@@ -62,7 +113,7 @@
 
         function buildPlanet(detail) {
             // Clean previous
-            disposeObject(solidSphere); disposeObject(wireframe);
+            disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup);
 
             // Base icosahedron
             const geom = new THREE.IcosahedronGeometry(radius, detail);
@@ -113,15 +164,114 @@
 
             // Dispose original geom (we cloned for solid)
             geom.dispose();
+
+            // Build filled tiles with biome colors (dual polygon fans)
+            tileGroup = new THREE.Group();
+            const vertexToFaces = new Map();
+            faces.forEach((face, faceIndex) => {
+                [face.a, face.b, face.c].forEach(vi => {
+                    if (!vertexToFaces.has(vi)) vertexToFaces.set(vi, []);
+                    vertexToFaces.get(vi).push(faceIndex);
+                });
+            });
+
+            // Continents seeds
+            const rng = makeRng(settings.seed);
+            const seeds = Array.from({length: settings.continents}, () => randomUnitVector(rng));
+            const wind = new THREE.Vector3(0.7, 0.0, -0.3).normalize();
+
+            function elevationAt(n) {
+                // plate distance (nearest seed)
+                let minD = 2;
+                for (const s of seeds) { const d = 1 - n.dot(s); if (d < minD) minD = d; }
+                let base = 1 - (minD / 2); // 0..1
+                const nois = fbm(n, 2.5, 4) * settings.noiseAmp * 0.4;
+                base = Math.max(0, Math.min(1, base*0.75 + nois));
+                return base;
+            }
+
+            function biomeColor(n) {
+                const elev = elevationAt(n);
+                if (elev < settings.seaLevel) return 0x2a65ff; // ocean
+                const lat = Math.abs(n.y);
+                let temp = 1 - Math.pow(lat, 1.5) - elev*0.45; // lapse rate
+                temp = Math.max(0, Math.min(1, temp));
+                const moist = Math.max(0, Math.min(1, 0.5*fbm(n, 1.8, 3) + 0.5*Math.max(0, n.dot(wind))))
+                               * (0.8 + 0.4*(1-elev));
+                // Mountains
+                if (elev > settings.seaLevel + 0.35) return 0x8b7355; // mountain brown
+                // Snow/ice
+                if (temp < 0.18) return 0xf0f8ff;
+                // Desert
+                if (moist < 0.22 && temp > 0.35) return 0xdeb887;
+                // Grassland / shrub
+                if (moist < 0.45) return 0x8db255;
+                // Forest
+                if (moist < 0.75) return 0x2e8b57;
+                // Rainforest
+                return 0x1f7a3a;
+            }
+
+            vertices.forEach((vertex, vi) => {
+                const adj = vertexToFaces.get(vi) || [];
+                if (adj.length < 5) return; // need at least a pentagon
+                const center = vertex.clone().normalize();
+                const up = center.clone();
+                let right = new THREE.Vector3(1,0,0).cross(up).normalize();
+                if (right.length() < 0.1) right = new THREE.Vector3(0,1,0).cross(up).normalize();
+                const forward = up.clone().cross(right).normalize();
+                const ordered = adj.map(idx => ({ idx, c: centroids[idx] }))
+                    .sort((A,B)=>{
+                        const a = A.c.clone().sub(center).normalize();
+                        const b = B.c.clone().sub(center).normalize();
+                        const angA = Math.atan2(a.dot(forward), a.dot(right));
+                        const angB = Math.atan2(b.dot(forward), b.dot(right));
+                        return angA-angB;
+                    });
+                const boundary = ordered.map(o => o.c.clone().normalize());
+                // Build triangle fan
+                const pos = [];
+                const nrm = [];
+                const C = center.clone().multiplyScalar(radius*1.0002);
+                for (let i=0;i<boundary.length;i++) {
+                    const P = boundary[i].clone().multiplyScalar(radius*1.0002);
+                    const N = boundary[(i+1)%boundary.length].clone().multiplyScalar(radius*1.0002);
+                    pos.push(C.x,C.y,C.z, P.x,P.y,P.z, N.x,N.y,N.z);
+                    nrm.push(center.x,center.y,center.z, boundary[i].x,boundary[i].y,boundary[i].z,
+                             boundary[(i+1)%boundary.length].x,boundary[(i+1)%boundary.length].y,boundary[(i+1)%boundary.length].z);
+                }
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+                g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm,3));
+                const mat = new THREE.MeshLambertMaterial({ color: biomeColor(center) });
+                const m = new THREE.Mesh(g, mat);
+                tileGroup.add(m);
+            });
+            scene.add(tileGroup);
         }
 
         // UI
         const detailSlider = document.getElementById('detail');
         const detailValue = document.getElementById('detailValue');
-        function setDetail(val) { detailValue.textContent = val; buildPlanet(parseInt(val, 10)); }
+        const continentsSlider = document.getElementById('continents');
+        const continentsValue = document.getElementById('continentsValue');
+        const seaSlider = document.getElementById('sea');
+        const seaValue = document.getElementById('seaValue');
+        const noiseSlider = document.getElementById('noise');
+        const noiseValue = document.getElementById('noiseValue');
+        const regenBtn = document.getElementById('regen');
+
+        function setDetail(val) { detailValue.textContent = val; lastDetail = parseInt(val,10); buildPlanet(lastDetail); }
+        function updateAndRebuild() { setSeedLabel(); buildPlanet(lastDetail); }
+
         detailSlider.addEventListener('input', e => setDetail(e.target.value));
+        continentsSlider.addEventListener('input', e => { settings.continents = parseInt(e.target.value,10); continentsValue.textContent = settings.continents; updateAndRebuild(); });
+        seaSlider.addEventListener('input', e => { settings.seaLevel = parseFloat(e.target.value); seaValue.textContent = settings.seaLevel.toFixed(2); updateAndRebuild(); });
+        noiseSlider.addEventListener('input', e => { settings.noiseAmp = parseFloat(e.target.value); noiseValue.textContent = settings.noiseAmp.toFixed(2); updateAndRebuild(); });
+        regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild(); });
 
         // Initial
+        setSeedLabel();
         setDetail(detailSlider.value);
 
         // Resize
