@@ -263,26 +263,22 @@
                 const isOcean = elev < settings.seaLevel;
                 let tileColor;
                 if (isOcean) {
-                    // Shallow vs deep ocean
-                    tileColor = elev < settings.seaLevel - 0.06 ? 0x071f3b : 0x1e90ff;
+                    // Bright ocean blue
+                    tileColor = 0x2196ff;
                 } else {
                     const lat = Math.abs(center.y);
                     let temp = 1 - Math.pow(lat, 1.25) - elev*0.5; // colder at poles & altitude
                     temp = Math.max(0, Math.min(1, temp));
                     const moist = Math.max(0, Math.min(1, 0.55*fbm(center, 1.8, 3) + 0.45*Math.max(0, center.dot(wind))))
                                    * (0.9 + 0.3*(1-elev));
-                    if (elev > settings.seaLevel + 0.42) tileColor = 0xdfe6eb; // very high mountain
-                    else if (elev > settings.seaLevel + 0.34) tileColor = 0x8b7355; // mountain
-                    else if (temp < 0.15) tileColor = 0xffffff; // ice
-                    else if (moist < 0.18 && temp > 0.35) tileColor = 0xffd27f; // hot desert
-                    else if (moist < 0.35) tileColor = 0xa6cf6b; // grassland
-                    else if (moist < 0.6) tileColor = 0x2f8f3a; // forest
-                    else tileColor = 0x146b29; // rainforest
+                    if (temp < 0.18 || elev > settings.seaLevel + 0.45) tileColor = 0xFFFFFF; // bright white ice/snow
+                    else if (moist < 0.20 && temp > 0.35) tileColor = 0xF4C27A; // bright sand/desert
+                    else tileColor = 0x00FF66; // bright green land
                 }
                 // slight shading by elevation/extrusion
                 tileColor = shade(tileColor, 0.9 + extrude*2.2);
-                const emissive = isOcean ? 0x000000 : 0x0d1f0a;
-                const mat = new THREE.MeshLambertMaterial({ color: tileColor, emissive, emissiveIntensity: 0.18, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+                const emissive = 0x000000;
+                const mat = new THREE.MeshLambertMaterial({ color: tileColor, emissive, emissiveIntensity: 0.12, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
                 const m = new THREE.Mesh(g, mat);
                 tileGroup.add(m);
 
