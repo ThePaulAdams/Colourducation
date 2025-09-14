@@ -422,7 +422,7 @@
             // Place trees on pre-identified forest vertices
             forestVertices.forEach((vertex) => {
                 if (Math.random() < treeDensity) {
-                    const tree = createTree(2 + Math.random() * 3);
+                    const tree = createTree(1.5 + Math.random() * 1.5); // Much smaller base size
                     
                     // Position tree at vertex location
                     tree.position.copy(vertex);
@@ -434,11 +434,11 @@
                     
                     // Add slight random rotation and scale variation
                     tree.rotateY(Math.random() * Math.PI * 2);
-                    const scale = treeScale * (0.8 + Math.random() * 0.4);
+                    const scale = (treeScale * 0.067) * (0.8 + Math.random() * 0.4); // 1/15th scale factor
                     tree.scale.set(scale, scale, scale);
                     
-                    // Move tree slightly above surface
-                    tree.position.add(normal.multiplyScalar(0.5));
+                    // Move tree slightly above surface (proportional to tree size)
+                    tree.position.add(normal.multiplyScalar(0.02));
                     
                     trees.push(tree);
                     treeGroup.add(tree);
