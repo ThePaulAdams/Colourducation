@@ -198,6 +198,8 @@
                     vertexToFaces.get(vi).push(faceIndex);
                 });
             });
+            console.log('vertexToFaces map size:', vertexToFaces.size);
+            console.log('Sample vertex adjacencies:', Array.from(vertexToFaces.entries()).slice(0, 5).map(([v, faces]) => `vertex ${v}: ${faces.length} faces`));
 
             // Continents seeds
             const rng = makeRng(settings.seed);
@@ -250,9 +252,9 @@
             let tilesCreated = 0;
             vertices.forEach((vertex, vi) => {
                 const adj = vertexToFaces.get(vi) || [];
-                if (adj.length < 3) {
+                if (adj.length < 1) {
                     console.log(`Vertex ${vi} has only ${adj.length} adjacent faces, skipping`);
-                    return; // need at least 3 faces
+                    return; // need at least 1 face
                 }
                 tilesCreated++;
                 const center = vertex.clone().normalize();
@@ -403,127 +405,6 @@
             controls.update();
             renderer.render(scene, camera);
         })();
-    </script>
-</body>
-</html>
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Geodesic Sphere</title>
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #000; }
-        canvas { display: block; }
-        .info {
-            position: absolute;
-            top: 10px;
-            width: 100%;
-            text-align: center;
-            color: white;
-            font-family: sans-serif;
-        }
-    </style>
-</head>
-<body>
-    <div class="info">Drag to Rotate, Scroll to Zoom</div>
-
-    <!-- Import utility libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
-    <script>
-        // --- 1. Scene, Camera, and Renderer Setup ---
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 30;
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-
-        // --- 2. Create the Sphere Geometry ---
-        const radius = 15;
-        const detail = 5; // A good balance of detail and performance
-        const icosahedronGeometry = new THREE.IcosahedronGeometry(radius, detail);
-
-        // A. Solid base sphere
-        const solidMaterial = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
-        const solidSphere = new THREE.Mesh(icosahedronGeometry, solidMaterial);
-        scene.add(solidSphere);
-
-        // B. Calculate the dual geometry (hexagonal wireframe)
-        const vertices = [];
-        const positions = icosahedronGeometry.attributes.position;
-        for (let i = 0; i < positions.count; i++) {
-            vertices.push(new THREE.Vector3().fromBufferAttribute(positions, i));
-        }
-
-        const faces = [];
-        if (icosahedronGeometry.index) {
-            for (let i = 0; i < icosahedronGeometry.index.count; i += 3) {
-                faces.push({ a: icosahedronGeometry.index.getX(i), b: icosahedronGeometry.index.getX(i + 1), c: icosahedronGeometry.index.getX(i + 2) });
-            }
-        } else {
-            for (let i = 0; i < positions.count; i += 3) {
-                faces.push({ a: i, b: i + 1, c: i + 2 });
-            }
-        }
-
-        const faceCentroids = faces.map(face => {
-            const vA = vertices[face.a];
-            const vB = vertices[face.b];
-            const vC = vertices[face.c];
-            return new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3);
-        });
-
-        const getVertexKey = v => `${v.x.toFixed(5)}_${v.y.toFixed(5)}_${v.z.toFixed(5)}`;
-        const edgeToFacesMap = new Map();
-        faces.forEach((face, i) => {
-            const faceEdges = [[vertices[face.a], vertices[face.b]], [vertices[face.b], vertices[face.c]], [vertices[face.c], vertices[face.a]]];
-            faceEdges.forEach(edge => {
-                const key1 = getVertexKey(edge[0]);
-                const key2 = getVertexKey(edge[1]);
-                const edgeKey = key1 < key2 ? `${key1}|${key2}` : `${key2}|${key1}`;
-                if (!edgeToFacesMap.has(edgeKey)) edgeToFacesMap.set(edgeKey, []);
-                edgeToFacesMap.get(edgeKey).push(i);
-            });
-        });
-
-        const wireframeEdges = [];
-        for (const faceIndices of edgeToFacesMap.values()) {
-            if (faceIndices.length === 2) {
-                const centroid1 = faceCentroids[faceIndices[0]];
-                const centroid2 = faceCentroids[faceIndices[1]];
-                wireframeEdges.push(centroid1.clone().normalize().multiplyScalar(radius * 1.001));
-                wireframeEdges.push(centroid2.clone().normalize().multiplyScalar(radius * 1.001));
-            }
-        }
-
-        const wireframeGeom = new THREE.BufferGeometry().setFromPoints(wireframeEdges);
-        const wireframeMat = new THREE.LineBasicMaterial({ color: 0x888888 });
-        const wireframe = new THREE.LineSegments(wireframeGeom, wireframeMat);
-        scene.add(wireframe);
-
-        // --- 3. Animation Loop ---
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        // --- 4. Event Listeners ---
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }, false);
-
-        // --- Start the application ---
-        animate();
     </script>
 </body>
 </html>
