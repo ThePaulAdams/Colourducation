@@ -765,23 +765,24 @@
                         const ridge3 = Math.abs(fbm(center.clone().multiplyScalar(0.6), 4.1, 2) - 0.5) * 2.0;
                         ridgeValue = (ridge1 * 0.6 + ridge2 * 0.3 + ridge3 * 0.1);
                         
-                        // Only on land areas (higher base elevation)
-                        const landMask = Math.max(0, Math.min(1, (elev - settings.seaLevel - 0.1) * 3.0));
+                        // Only on land areas (any elevation above sea level)
+                        const landMask = Math.max(0, Math.min(1, (elev - settings.seaLevel) * 5.0));
                         ridgeValue *= landMask;
                     }
                     
-                    // Determine biome type based on elevation, temperature, moisture, and ridges
-                    if (elev > settings.seaLevel + 0.4) {
-                        // High elevation areas
+                    // Check for ridges first (can appear on any land elevation)
+                    if (ridgeValue > 0.4 && settings.ridgeIntensity > 0.1 && elev > settings.seaLevel + 0.05) {
+                        // Mountain ridges - can appear on lower elevations too
+                        finalColor = ridge;
+                        biomeType = 'ridge';
+                        countRidges++;
+                    }
+                    // High elevation areas
+                    else if (elev > settings.seaLevel + 0.4) {
                         if (temp < 0.3) {
                             finalColor = ice;
                             biomeType = 'ice';
                             countIce++;
-                        } else if (ridgeValue > 0.5 && settings.ridgeIntensity > 0.1) {
-                            // Mountain ridges - distinctive biome (lowered thresholds)
-                            finalColor = ridge;
-                            biomeType = 'ridge';
-                            countRidges++;
                         } else {
                             finalColor = mountain;
                             biomeType = 'mountain';
@@ -799,16 +800,16 @@
                         biomeType = coldFactor > 0.6 ? 'ice' : 'grassland';
                         if (coldFactor > 0.6) countIce++; else countLand++;
                     }
-                    // Hot and dry = desert (made more permissive)
-                    else if (moist < 0.4 && temp > 0.3) {
-                        const dryFactor = Math.min(1, (0.4 - moist) / 0.4 * (temp - 0.3) / 0.7);
+                    // Hot and dry = desert (works on any land elevation)
+                    else if (moist < 0.5 && temp > 0.25 && elev > settings.seaLevel + 0.02) {
+                        const dryFactor = Math.min(1, (0.5 - moist) / 0.5 * (temp - 0.25) / 0.75);
                         finalColor = {
                             r: Math.floor(grassland.r + (desert.r - grassland.r) * dryFactor),
                             g: Math.floor(grassland.g + (desert.g - grassland.g) * dryFactor),
                             b: Math.floor(grassland.b + (desert.b - grassland.b) * dryFactor)
                         };
-                        biomeType = dryFactor > 0.3 ? 'desert' : 'grassland';
-                        if (dryFactor > 0.3) countDesert++; else countLand++;
+                        biomeType = dryFactor > 0.2 ? 'desert' : 'grassland';
+                        if (dryFactor > 0.2) countDesert++; else countLand++;
                     }
                     // Wet regions = forest
                     else if (moist > 0.6) {
