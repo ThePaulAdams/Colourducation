@@ -231,7 +231,7 @@
         }
 
         // Create water shader material with ripple effects
-        function createWaterMaterial(baseColor, isCoastline = false, tileCenter = null) {
+        function createWaterMaterial(baseColor, isCoastline = false, tileCenter = null, landDirection = null) {
             if (!isCoastline || settings.rippleIntensity <= 0) {
                 // Regular water material for non-coastline tiles
                 return new THREE.MeshPhongMaterial({ 
@@ -244,7 +244,7 @@
                 });
             }
 
-            // Animated water shader for coastline tiles
+            // Animated water shader for coastline tiles with directional waves
             const waterMaterial = new THREE.ShaderMaterial({
                 transparent: false,
                 side: THREE.DoubleSide,
@@ -254,6 +254,7 @@
                     rippleIntensity: { value: settings.rippleIntensity },
                     rippleSpeed: { value: settings.rippleSpeed },
                     tileCenter: { value: tileCenter || new THREE.Vector3(0, 0, 0) },
+                    landDirection: { value: landDirection || new THREE.Vector3(1, 0, 0) },
                     planetRadius: { value: radius }
                 },
                 vertexShader: `
@@ -261,29 +262,50 @@
                     uniform float rippleIntensity;
                     uniform float rippleSpeed;
                     uniform vec3 tileCenter;
+                    uniform vec3 landDirection;
                     uniform float planetRadius;
                     
                     varying vec3 vPosition;
                     varying vec3 vNormal;
                     varying float vRipple;
+                    varying float vDistanceToShore;
                     
                     void main() {
                         vPosition = position;
                         
-                        // Calculate ripple effect based on distance from tile center and time
+                        // Calculate world position
                         vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+                        
+                        // Vector from tile center to current vertex
+                        vec3 centerToVertex = normalize(worldPos - tileCenter);
+                        
+                        // Calculate how aligned this point is with the land direction
+                        float alignment = dot(centerToVertex, landDirection);
+                        
+                        // Distance from tile center
                         float distanceFromCenter = length(worldPos - tileCenter);
                         
-                        // Create multiple ripple waves
-                        float ripple1 = sin(distanceFromCenter * 8.0 - time * rippleSpeed * 6.0) * 0.4;
-                        float ripple2 = sin(distanceFromCenter * 15.0 - time * rippleSpeed * 4.0) * 0.3;
-                        float ripple3 = sin(distanceFromCenter * 25.0 + time * rippleSpeed * 8.0) * 0.2;
+                        // Create shore distance - closer to 1 when approaching shore
+                        vDistanceToShore = max(0.0, alignment);
                         
-                        vRipple = (ripple1 + ripple2 + ripple3) * rippleIntensity;
+                        // Only create waves near the shore edge (high alignment)
+                        float shoreEffect = smoothstep(0.3, 1.0, vDistanceToShore);
                         
-                        // Apply ripple to position (slight displacement along normal)
+                        // Distance along the wave direction (from center toward shore)
+                        float waveProgress = distanceFromCenter * vDistanceToShore;
+                        
+                        // Create multiple wave layers moving toward shore
+                        float wave1 = sin(waveProgress * 12.0 - time * rippleSpeed * 8.0) * 0.5;
+                        float wave2 = sin(waveProgress * 20.0 - time * rippleSpeed * 6.0) * 0.3;
+                        float wave3 = sin(waveProgress * 35.0 - time * rippleSpeed * 10.0) * 0.2;
+                        
+                        // Combine waves with shore effect
+                        vRipple = (wave1 + wave2 + wave3) * shoreEffect * rippleIntensity;
+                        
+                        // Apply stronger displacement near shore
                         vec3 normalizedPos = normalize(position);
-                        vec3 displacedPosition = position + normalizedPos * vRipple * 0.02;
+                        float displacement = vRipple * 0.03 * shoreEffect;
+                        vec3 displacedPosition = position + normalizedPos * displacement;
                         
                         vNormal = normalize(normalMatrix * normal);
                         gl_Position = projectionMatrix * modelViewMatrix * vec4(displacedPosition, 1.0);
@@ -297,23 +319,30 @@
                     varying vec3 vPosition;
                     varying vec3 vNormal;
                     varying float vRipple;
+                    varying float vDistanceToShore;
                     
                     void main() {
                         // Base water color
                         vec3 color = baseColor;
                         
-                        // Add brightness variation from ripples
-                        float brightness = 1.0 + vRipple * 0.3;
+                        // Stronger effects near shore
+                        float shoreIntensity = smoothstep(0.2, 1.0, vDistanceToShore);
+                        
+                        // Add brightness variation from waves
+                        float brightness = 1.0 + vRipple * 0.4 * shoreIntensity;
                         color *= brightness;
                         
-                        // Add subtle shimmer effect
-                        float shimmer = sin(time * rippleSpeed * 3.0 + vPosition.x * 10.0 + vPosition.z * 10.0) * 0.1 + 1.0;
+                        // Add foam effect near shore
+                        float foam = smoothstep(0.7, 1.0, vDistanceToShore) * 
+                                    (sin(time * rippleSpeed * 4.0) * 0.1 + 0.1);
+                        color = mix(color, vec3(1.0, 1.0, 1.0), foam);
+                        
+                        // Subtle shimmer concentrated near shore
+                        float shimmer = sin(time * rippleSpeed * 5.0 + vPosition.x * 15.0 + vPosition.z * 15.0) 
+                                      * 0.15 * shoreIntensity + 1.0;
                         color *= shimmer;
                         
-                        // Add slight transparency near ripple peaks for foam effect
-                        float alpha = 1.0 - abs(vRipple) * 0.1;
-                        
-                        gl_FragColor = vec4(color, alpha);
+                        gl_FragColor = vec4(color, 1.0);
                     }
                 `
             });
@@ -540,6 +569,40 @@
                 return false;
             }
             
+            // Calculate the direction from water tile center toward nearest land
+            function calculateLandDirection(waterVertexIndex) {
+                const waterCenter = vertices[waterVertexIndex].clone().normalize();
+                const adjacentFaces = vertexToFaces.get(waterVertexIndex) || [];
+                
+                // Collect all adjacent land vertices
+                const landVertices = [];
+                for (const faceIdx of adjacentFaces) {
+                    const face = faces[faceIdx];
+                    const adjacentVertices = [face.a, face.b, face.c];
+                    for (const adjVertex of adjacentVertices) {
+                        if (adjVertex !== waterVertexIndex && vertexBiomes[adjVertex] === 'land') {
+                            landVertices.push(vertices[adjVertex].clone().normalize());
+                        }
+                    }
+                }
+                
+                if (landVertices.length === 0) {
+                    return new THREE.Vector3(1, 0, 0); // Default direction
+                }
+                
+                // Calculate average direction to all adjacent land vertices
+                const avgLandDirection = new THREE.Vector3(0, 0, 0);
+                for (const landVertex of landVertices) {
+                    avgLandDirection.add(landVertex);
+                }
+                avgLandDirection.divideScalar(landVertices.length).normalize();
+                
+                // Calculate direction from water center to average land position
+                const directionToLand = avgLandDirection.clone().sub(waterCenter).normalize();
+                
+                return directionToLand;
+            }
+            
             // Create hexagonal/pentagonal tiles using dual polyhedron approach
             let skippedCount = 0;
             vertices.forEach((vertex, vi) => {
@@ -758,7 +821,14 @@
                     // Check if this is a coastline tile
                     const isCoastline = isCoastlineVertex(vi);
                     const tileCenter = center.clone().multiplyScalar(radius * shell);
-                    mat = createWaterMaterial(tileColor, isCoastline, tileCenter);
+                    let landDirection = null;
+                    
+                    if (isCoastline) {
+                        // Calculate direction from tile center toward land
+                        landDirection = calculateLandDirection(vi);
+                    }
+                    
+                    mat = createWaterMaterial(tileColor, isCoastline, tileCenter, landDirection);
                 } else {
                     // Use Phong material for land tiles
                     mat = new THREE.MeshPhongMaterial({ 
