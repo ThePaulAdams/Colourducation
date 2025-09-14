@@ -96,6 +96,10 @@
         <input type="range" id="rippleIntensity" min="0" max="1" step="0.05" value="0.5" />
         <label style="margin-top:10px">Ripple Speed: <span class="value" id="rippleSpeedValue">1.0</span></label>
         <input type="range" id="rippleSpeed" min="0" max="3" step="0.1" value="1.0" />
+        <label style="margin-top:10px">Tree Density: <span class="value" id="treeDensityValue">0.3</span></label>
+        <input type="range" id="treeDensity" min="0" max="1" step="0.05" value="0.3" />
+        <label style="margin-top:10px">Tree Scale: <span class="value" id="treeScaleValue">1.0</span></label>
+        <input type="range" id="treeScale" min="0.2" max="2" step="0.1" value="1.0" />
         <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
             <span id="seedLbl" class="value"></span>
@@ -120,6 +124,10 @@
         let stars, nebulaLayer1, nebulaLayer2, nebulaLayer3;
         const starCount = 5000;
         let nebulaAnimationTime = 0;
+
+        // Tree system variables
+        let trees = [];
+        let treeGroup = new THREE.Group();
         const renderer = new THREE.WebGLRenderer({ 
             antialias: true,
             alpha: true,
@@ -136,6 +144,9 @@
         
         // Initialize nebula background
         initializeNebulaBackground();
+        
+        // Add tree group to scene
+        scene.add(treeGroup);
         
         // Update zoom display function
         function updateZoomDisplay() {
@@ -175,6 +186,8 @@
             cloudOpacity: 0.05,
             rippleIntensity: 0.5,
             rippleSpeed: 1.0,
+            treeDensity: 0.3,
+            treeScale: 1.0,
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
@@ -335,6 +348,111 @@
             scene.add(nebulaLayer1);
             scene.add(nebulaLayer2);
             scene.add(nebulaLayer3);
+        }
+
+        // Tree generation system (adapted from provided code)
+        function createTreeMaterial() {
+            return new THREE.MeshPhongMaterial({
+                color: 0x2C9E4B,
+                shininess: 20,
+                side: THREE.FrontSide
+            });
+        }
+
+        function Cone(size, translate, material) {
+            size = size || 10;
+            const geometry = new THREE.CylinderGeometry(size / 2, size, size, 6);
+            if (translate) {
+                geometry.applyMatrix4(new THREE.Matrix4().makeTranslation(0, size, 0));
+            }
+            const cone = new THREE.Mesh(geometry, material);
+            cone.castShadow = true;
+            cone.receiveShadow = true;
+            return cone;
+        }
+
+        function createTree(size) {
+            size = size || (3 + Math.random() * 2);
+            const tree = new THREE.Group();
+            const treeMaterial = createTreeMaterial();
+            
+            let lastCone;
+            let cone;
+
+            for (let i = 0; i < size; i++) {
+                cone = Cone((size - i) + 1, i, treeMaterial);
+                cone.position.y = 0;
+                
+                if (lastCone) {
+                    const box = new THREE.Box3().setFromObject(lastCone);
+                    cone.position.y = (box.max.y + box.min.y) / 2;
+                } else {
+                    cone.position.y += 2;
+                }
+                
+                lastCone = cone;
+                tree.add(cone);
+            }
+
+            return tree;
+        }
+
+        function clearTrees() {
+            // Remove existing trees
+            trees.forEach(tree => {
+                tree.traverse(child => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) child.material.dispose();
+                });
+            });
+            treeGroup.clear();
+            trees = [];
+        }
+
+        function generateForestTrees() {
+            clearTrees();
+            
+            if (!vertices || vertices.length === 0) return;
+            
+            const treeDensity = settings.treeDensity || 0.3;
+            const treeScale = settings.treeScale || 1.0;
+            
+            // Only place trees on forest tiles (high moisture, land elevation)
+            vertices.forEach((vertex, index) => {
+                const elev = elevationAt(vertex);
+                const temp = temperatureAt(vertex);
+                const moist = moistureAt(vertex);
+                
+                // Forest conditions: land elevation, moderate temperature, high moisture
+                const isForest = elev > settings.seaLevel + 0.02 && 
+                               temp > 0.2 && temp < 0.8 && 
+                               moist > 0.6;
+                
+                if (isForest && Math.random() < treeDensity) {
+                    const tree = createTree(2 + Math.random() * 3);
+                    
+                    // Position tree at vertex location
+                    tree.position.copy(vertex);
+                    
+                    // Orient tree to planet surface (normal points outward)
+                    const normal = vertex.clone().normalize();
+                    tree.lookAt(vertex.clone().add(normal));
+                    tree.rotateX(Math.PI / 2); // Adjust orientation
+                    
+                    // Add slight random rotation and scale variation
+                    tree.rotateY(Math.random() * Math.PI * 2);
+                    const scale = treeScale * (0.8 + Math.random() * 0.4);
+                    tree.scale.set(scale, scale, scale);
+                    
+                    // Move tree slightly above surface
+                    tree.position.add(normal.multiplyScalar(0.5));
+                    
+                    trees.push(tree);
+                    treeGroup.add(tree);
+                }
+            });
+            
+            console.log(`Generated ${trees.length} trees`);
         }
 
         // Cloud generation function
@@ -1105,6 +1223,10 @@
                 tileGroup.add(outline);
             });
             scene.add(tileGroup);
+            
+            // Generate trees on forest tiles
+            generateForestTrees();
+            
             console.log(`Created ${tilesCreated} tiles, counted ${countTotal} biomes, skipped ${skippedCount} vertices`);
             console.log(`Biome counts - Ocean: ${countOcean}, Land: ${countLand}, Ice: ${countIce}, Desert: ${countDesert}, Ridges: ${countRidges}`);
             // update debug label with nice formatting
@@ -1230,6 +1352,16 @@
             rippleSpeedValue.textContent = settings.rippleSpeed.toFixed(1);
             updateWaterShaderSettings();
         }
+        function onTreeDensity(val) {
+            settings.treeDensity = parseFloat(val);
+            document.getElementById('treeDensityValue').textContent = settings.treeDensity.toFixed(2);
+            generateForestTrees(); // Regenerate trees with new density
+        }
+        function onTreeScale(val) {
+            settings.treeScale = parseFloat(val);
+            document.getElementById('treeScaleValue').textContent = settings.treeScale.toFixed(1);
+            generateForestTrees(); // Regenerate trees with new scale
+        }
         
         function updateWaterShaderSettings() {
             // Update all active water materials
@@ -1259,6 +1391,14 @@
         rippleIntensitySlider.addEventListener('change', e => onRippleIntensity(e.target.value));
         rippleSpeedSlider.addEventListener('input', e => onRippleSpeed(e.target.value));
         rippleSpeedSlider.addEventListener('change', e => onRippleSpeed(e.target.value));
+        
+        const treeDensitySlider = document.getElementById('treeDensity');
+        const treeScaleSlider = document.getElementById('treeScale');
+        treeDensitySlider.addEventListener('input', e => onTreeDensity(e.target.value));
+        treeDensitySlider.addEventListener('change', e => onTreeDensity(e.target.value));
+        treeScaleSlider.addEventListener('input', e => onTreeScale(e.target.value));
+        treeScaleSlider.addEventListener('change', e => onTreeScale(e.target.value));
+        
         regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild('regen'); });
 
         // Initial
