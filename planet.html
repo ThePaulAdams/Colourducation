@@ -37,6 +37,10 @@
         <input type="range" id="cloudDensity" min="0" max="1" step="0.05" value="0.35" />
         <label style="margin-top:10px">Cloud Opacity: <span class="value" id="cloudOpacityValue">0.05</span></label>
         <input type="range" id="cloudOpacity" min="0" max="1" step="0.05" value="0.05" />
+        <label style="margin-top:10px">Water Ripples: <span class="value" id="rippleIntensityValue">0.5</span></label>
+        <input type="range" id="rippleIntensity" min="0" max="1" step="0.05" value="0.5" />
+        <label style="margin-top:10px">Ripple Speed: <span class="value" id="rippleSpeedValue">1.0</span></label>
+        <input type="range" id="rippleSpeed" min="0" max="3" step="0.1" value="1.0" />
         <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
             <span id="seedLbl" class="value"></span>
@@ -89,6 +93,8 @@
         let cloudSphere = null; // holds the cloud layer
         let lastDetail = 15;
         let cloudAnimationTime = 0;
+        let waterAnimationTime = 0;
+        const waterMaterials = new Map(); // Store water materials for animation updates
         
         // Hover system
         const raycaster = new THREE.Raycaster();
@@ -104,6 +110,8 @@
             outlineAlpha: 0.05,
             cloudDensity: 0.35,
             cloudOpacity: 0.05,
+            rippleIntensity: 0.5,
+            rippleSpeed: 1.0,
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
@@ -222,6 +230,101 @@
             console.log('Cloud sphere created and added to scene');
         }
 
+        // Create water shader material with ripple effects
+        function createWaterMaterial(baseColor, isCoastline = false, tileCenter = null) {
+            if (!isCoastline || settings.rippleIntensity <= 0) {
+                // Regular water material for non-coastline tiles
+                return new THREE.MeshPhongMaterial({ 
+                    color: baseColor, 
+                    transparent: false,
+                    opacity: 1.0,
+                    side: THREE.DoubleSide,
+                    shininess: 30,
+                    specular: 0x444444
+                });
+            }
+
+            // Animated water shader for coastline tiles
+            const waterMaterial = new THREE.ShaderMaterial({
+                transparent: false,
+                side: THREE.DoubleSide,
+                uniforms: {
+                    time: { value: 0.0 },
+                    baseColor: { value: new THREE.Color(baseColor) },
+                    rippleIntensity: { value: settings.rippleIntensity },
+                    rippleSpeed: { value: settings.rippleSpeed },
+                    tileCenter: { value: tileCenter || new THREE.Vector3(0, 0, 0) },
+                    planetRadius: { value: radius }
+                },
+                vertexShader: `
+                    uniform float time;
+                    uniform float rippleIntensity;
+                    uniform float rippleSpeed;
+                    uniform vec3 tileCenter;
+                    uniform float planetRadius;
+                    
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+                    varying float vRipple;
+                    
+                    void main() {
+                        vPosition = position;
+                        
+                        // Calculate ripple effect based on distance from tile center and time
+                        vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+                        float distanceFromCenter = length(worldPos - tileCenter);
+                        
+                        // Create multiple ripple waves
+                        float ripple1 = sin(distanceFromCenter * 8.0 - time * rippleSpeed * 6.0) * 0.4;
+                        float ripple2 = sin(distanceFromCenter * 15.0 - time * rippleSpeed * 4.0) * 0.3;
+                        float ripple3 = sin(distanceFromCenter * 25.0 + time * rippleSpeed * 8.0) * 0.2;
+                        
+                        vRipple = (ripple1 + ripple2 + ripple3) * rippleIntensity;
+                        
+                        // Apply ripple to position (slight displacement along normal)
+                        vec3 normalizedPos = normalize(position);
+                        vec3 displacedPosition = position + normalizedPos * vRipple * 0.02;
+                        
+                        vNormal = normalize(normalMatrix * normal);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(displacedPosition, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 baseColor;
+                    uniform float time;
+                    uniform float rippleSpeed;
+                    
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+                    varying float vRipple;
+                    
+                    void main() {
+                        // Base water color
+                        vec3 color = baseColor;
+                        
+                        // Add brightness variation from ripples
+                        float brightness = 1.0 + vRipple * 0.3;
+                        color *= brightness;
+                        
+                        // Add subtle shimmer effect
+                        float shimmer = sin(time * rippleSpeed * 3.0 + vPosition.x * 10.0 + vPosition.z * 10.0) * 0.1 + 1.0;
+                        color *= shimmer;
+                        
+                        // Add slight transparency near ripple peaks for foam effect
+                        float alpha = 1.0 - abs(vRipple) * 0.1;
+                        
+                        gl_FragColor = vec4(color, alpha);
+                    }
+                `
+            });
+
+            // Store reference for animation updates
+            const materialId = Date.now() + Math.random();
+            waterMaterials.set(materialId, waterMaterial);
+
+            return waterMaterial;
+        }
+
         function shade(color, factor) {
             const r = Math.max(0, Math.min(255, Math.floor(((color >> 16) & 255) * factor)));
             const g = Math.max(0, Math.min(255, Math.floor(((color >> 8) & 255) * factor)));
@@ -251,6 +354,9 @@
             
             // Clean previous
             disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup); disposeObject(cloudSphere);
+            
+            // Clear water materials map
+            waterMaterials.clear();
 
             // Base icosahedron
             const geom = new THREE.IcosahedronGeometry(radius, detail);
@@ -408,6 +514,31 @@
                 extrude = Math.max(-0.03, Math.min(0.08, extrude * 0.18));
                 return 1.0 + extrude;
             });
+            
+            // Pre-calculate which vertices are ocean vs land for coastline detection
+            const vertexBiomes = vertices.map(v => {
+                const normalized = v.clone().normalize();
+                const elev = elevationAt(normalized);
+                return elev < settings.seaLevel ? 'ocean' : 'land';
+            });
+            
+            // Function to check if a vertex is coastline (ocean adjacent to land)
+            function isCoastlineVertex(vertexIndex) {
+                if (vertexBiomes[vertexIndex] !== 'ocean') return false;
+                
+                const adjacentFaces = vertexToFaces.get(vertexIndex) || [];
+                // Check if any adjacent vertices are land
+                for (const faceIdx of adjacentFaces) {
+                    const face = faces[faceIdx];
+                    const adjacentVertices = [face.a, face.b, face.c];
+                    for (const adjVertex of adjacentVertices) {
+                        if (adjVertex !== vertexIndex && vertexBiomes[adjVertex] === 'land') {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
             
             // Create hexagonal/pentagonal tiles using dual polyhedron approach
             let skippedCount = 0;
@@ -622,15 +753,23 @@
                 tilesCreated++;
                 
                 // Create solid triangle tile
-                // Use Phong material for smoother lighting and better edge interpolation
-                const mat = new THREE.MeshPhongMaterial({ 
-                    color: tileColor, 
-                    transparent: false,
-                    opacity: 1.0,
-                    side: THREE.DoubleSide,
-                    shininess: 10,
-                    specular: 0x111111
-                });
+                let mat;
+                if (isOcean) {
+                    // Check if this is a coastline tile
+                    const isCoastline = isCoastlineVertex(vi);
+                    const tileCenter = center.clone().multiplyScalar(radius * shell);
+                    mat = createWaterMaterial(tileColor, isCoastline, tileCenter);
+                } else {
+                    // Use Phong material for land tiles
+                    mat = new THREE.MeshPhongMaterial({ 
+                        color: tileColor, 
+                        transparent: false,
+                        opacity: 1.0,
+                        side: THREE.DoubleSide,
+                        shininess: 10,
+                        specular: 0x111111
+                    });
+                }
                 const m = new THREE.Mesh(g, mat);
                 
                 // Store original color for hover system
@@ -733,6 +872,10 @@
         const cloudDensityValue = document.getElementById('cloudDensityValue');
         const cloudOpacitySlider = document.getElementById('cloudOpacity');
         const cloudOpacityValue = document.getElementById('cloudOpacityValue');
+        const rippleIntensitySlider = document.getElementById('rippleIntensity');
+        const rippleIntensityValue = document.getElementById('rippleIntensityValue');
+        const rippleSpeedSlider = document.getElementById('rippleSpeed');
+        const rippleSpeedValue = document.getElementById('rippleSpeedValue');
         const regenBtn = document.getElementById('regen');
 
         function setDetail(val) {
@@ -798,6 +941,26 @@
                 createCloudSphere();
             }
         }
+        function onRippleIntensity(val) {
+            settings.rippleIntensity = parseFloat(val);
+            rippleIntensityValue.textContent = settings.rippleIntensity.toFixed(2);
+            updateWaterShaderSettings();
+        }
+        function onRippleSpeed(val) {
+            settings.rippleSpeed = parseFloat(val);
+            rippleSpeedValue.textContent = settings.rippleSpeed.toFixed(1);
+            updateWaterShaderSettings();
+        }
+        
+        function updateWaterShaderSettings() {
+            // Update all active water materials
+            waterMaterials.forEach(material => {
+                if (material.uniforms) {
+                    material.uniforms.rippleIntensity.value = settings.rippleIntensity;
+                    material.uniforms.rippleSpeed.value = settings.rippleSpeed;
+                }
+            });
+        }
 
         continentsSlider.addEventListener('input', e => onContinents(e.target.value));
         continentsSlider.addEventListener('change', e => onContinents(e.target.value));
@@ -813,6 +976,10 @@
         cloudDensitySlider.addEventListener('change', e => onCloudDensity(e.target.value));
         cloudOpacitySlider.addEventListener('input', e => onCloudOpacity(e.target.value));
         cloudOpacitySlider.addEventListener('change', e => onCloudOpacity(e.target.value));
+        rippleIntensitySlider.addEventListener('input', e => onRippleIntensity(e.target.value));
+        rippleIntensitySlider.addEventListener('change', e => onRippleIntensity(e.target.value));
+        rippleSpeedSlider.addEventListener('input', e => onRippleSpeed(e.target.value));
+        rippleSpeedSlider.addEventListener('change', e => onRippleSpeed(e.target.value));
         regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild('regen'); });
 
         // Initial
@@ -881,6 +1048,14 @@
                 cloudSphere.rotation.y = cloudAnimationTime;
                 cloudSphere.rotation.x = cloudAnimationTime * 0.3;
             }
+            
+            // Update water ripple animation
+            waterAnimationTime += 0.016; // ~60fps
+            waterMaterials.forEach(material => {
+                if (material.uniforms && material.uniforms.time) {
+                    material.uniforms.time.value = waterAnimationTime;
+                }
+            });
             
             renderer.render(scene, camera);
         })();
