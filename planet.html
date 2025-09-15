@@ -75,15 +75,39 @@
 </head>
 <body>
     <div class="info">Drag to Rotate, Scroll to Zoom</div>
+    
+    <!-- Debug Info Overlay -->
+    <div id="debug-overlay" style="
+        position: absolute;
+        top: 50px;
+        right: 20px;
+        background: rgba(0, 25, 50, 0.9);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #cce7ff;
+        padding: 15px;
+        font-family: 'Inter', sans-serif;
+        font-size: 12px;
+        line-height: 1.4;
+        min-width: 200px;
+        display: none;
+        z-index: 100;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    ">
+        <div style="font-weight: bold; margin-bottom: 8px; color: #fff;">Tile Debug Info</div>
+        <div id="debug-content"></div>
+    </div>
     <div class="ui">
         <label>Tile density (detail): <span class="value" id="detailValue">15</span></label>
         <input type="range" id="detail" min="0" max="20" step="1" value="15" />
-        <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">5</span></label>
-        <input type="range" id="continents" min="3" max="24" step="1" value="5" />
+        <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">6</span></label>
+        <input type="range" id="continents" min="3" max="24" step="1" value="6" />
         <label style="margin-top:10px">Sea level: <span class="value" id="seaValue">0.80</span></label>
         <input type="range" id="sea" min="0" max="1" step="0.01" value="0.8" />
-        <label style="margin-top:10px">Noise: <span class="value" id="noiseValue">0.15</span></label>
-        <input type="range" id="noise" min="0" max="3" step="0.05" value="0.15" />
+        <label style="margin-top:10px">Noise: <span class="value" id="noiseValue">0.25</span></label>
+        <input type="range" id="noise" min="0" max="3" step="0.05" value="0.25" />
         <label style="margin-top:10px">Mountain Ridges: <span class="value" id="ridgesValue">0.3</span></label>
         <input type="range" id="ridges" min="0" max="1" step="0.05" value="0.3" />
         <label style="margin-top:10px">Outline Alpha: <span class="value" id="alphaValue">0.05</span></label>
@@ -96,20 +120,25 @@
         <input type="range" id="rippleIntensity" min="0" max="1" step="0.05" value="0.5" />
         <label style="margin-top:10px">Ripple Speed: <span class="value" id="rippleSpeedValue">1.0</span></label>
         <input type="range" id="rippleSpeed" min="0" max="3" step="0.1" value="1.0" />
-        <label style="margin-top:10px">Tree Density: <span class="value" id="treeDensityValue">0.3</span></label>
-        <input type="range" id="treeDensity" min="0" max="1" step="0.05" value="0.3" />
+        <label style="margin-top:10px">Tree Density: <span class="value" id="treeDensityValue">0.35</span></label>
+        <input type="range" id="treeDensity" min="0" max="1" step="0.05" value="0.35" />
         <label style="margin-top:10px">Tree Scale: <span class="value" id="treeScaleValue">1.0</span></label>
         <input type="range" id="treeScale" min="0.2" max="2" step="0.1" value="1.0" />
         <label style="margin-top:10px">Trees per Tile: <span class="value" id="treesPerTileValue">5</span></label>
         <input type="range" id="treesPerTile" min="1" max="8" step="1" value="5" />
         <label style="margin-top:10px">Tree Spacing: <span class="value" id="treeSpacingValue">0.4</span></label>
         <input type="range" id="treeSpacing" min="0.1" max="1.5" step="0.1" value="0.4" />
-        <label style="margin-top:10px">Snow Intensity: <span class="value" id="snowIntensityValue">0.6</span></label>
-        <input type="range" id="snowIntensity" min="0" max="1" step="0.1" value="0.6" />
-        <label style="margin-top:10px">Snow Speed: <span class="value" id="snowSpeedValue">1.0</span></label>
-        <input type="range" id="snowSpeed" min="0.1" max="3" step="0.1" value="1.0" />
+        <label style="margin-top:10px">Ice Intensity: <span class="value" id="iceIntensityValue">0.5</span></label>
+        <input type="range" id="iceIntensity" min="0" max="1" step="0.1" value="0.5" />
+        <label style="margin-top:10px">Snow Intensity: <span class="value" id="snowIntensityValue">1.0</span></label>
+        <input type="range" id="snowIntensity" min="0" max="1" step="0.1" value="1.0" />
+        <label style="margin-top:10px">Snow Speed: <span class="value" id="snowSpeedValue">0.8</span></label>
+        <input type="range" id="snowSpeed" min="0.1" max="3" step="0.1" value="0.8" />
+        <label style="margin-top:10px">Light Orbit Speed: <span class="value" id="lightSpeedValue">0.3</span></label>
+        <input type="range" id="lightSpeed" min="0" max="3" step="0.1" value="0.3" />
         <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
+            <button id="debug-toggle" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Debug: Off</button>
             <span id="seedLbl" class="value"></span>
         </div>
         <div style="margin-top:10px;">
@@ -121,6 +150,166 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    
+    <!-- Snow Shader Scripts -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        void main() {
+            gl_Position = vec4( position, 1.0 );
+        }
+    </script>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+        uniform float u_time;
+        uniform sampler2D u_noise;
+        uniform float u_snowIntensity;
+        uniform float u_snowSpeed;
+        
+        #define PI 3.141592653589793
+        #define TAU 6.
+        
+        const float multiplier = 25.5;
+        const float zoomSpeed = 10.;
+        const int layers = 10;
+        const int octaves = 5;
+
+        vec2 hash2(vec2 p) {
+            vec2 o = texture2D( u_noise, (p+0.5)/256.0, -100.0 ).xy;
+            return o;
+        }
+        
+        mat2 rotate2d(float _angle){
+            return mat2(cos(_angle),sin(_angle),
+                        -sin(_angle),cos(_angle));
+        }
+        
+        vec3 hsb2rgb( in vec3 c ){
+            vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),
+                                     6.0)-3.0)-1.0,
+                             0.0,
+                             1.0 );
+            rgb = rgb*rgb*(3.0-2.0*rgb);
+            return c.z * mix( vec3(1.0), rgb, c.y);
+        }
+        
+        float hash(vec2 p) {
+            float o = texture2D( u_noise, (p+0.5)/256.0, -100.0 ).x;
+            return o;
+        }
+        
+        float noise(vec2 uv) {
+            vec2 id = floor(uv);
+            vec2 subuv = fract(uv);
+            vec2 u = subuv * subuv * (3. - 2. * subuv);
+            float a = hash(id);
+            float b = hash(id + vec2(1., 0.));
+            float c = hash(id + vec2(0., 1.));
+            float d = hash(id + vec2(1., 1.));
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+        
+        float fbm(in vec2 uv) {
+            float s = .0;
+            float m = .0;
+            float a = .5;
+            for(int i = 0; i < octaves; i++) {
+                s += a * noise(uv);
+                m += a;
+                a *= .5;
+                uv *= 2.;
+            }
+            return s / m;
+        }
+        
+        vec3 domain(vec2 z){
+            return vec3(hsb2rgb(vec3(atan(z.y,z.x)/TAU,1.,1.)));
+        }
+        
+        vec3 colour(vec2 z) {
+            return domain(z);
+        }
+        
+        // The render function is where we render the pattern to be added to the layer
+        vec3 render(vec2 uv, float scale, vec3 colour) {
+            vec2 id = floor(uv);
+            vec2 subuv = fract(uv);
+            vec2 rand = hash2(id);
+            float bokeh = abs(scale) * 1.;
+            
+            float particle = 0.;
+            
+            if(length(rand) > 1.3) {
+                vec2 pos = subuv-.5;
+                float field = length(pos);
+                particle = smoothstep(.3, 0., field);
+                particle += smoothstep(.4, 0.34 * bokeh, field);
+            }
+            return vec3(particle*2.);
+        }
+        
+        vec3 renderLayer(int layer, int layers, vec2 uv, inout float opacity, vec3 colour, float n) {
+            vec2 _uv = uv;
+            // Scale
+            // Generating a scale value between zero and 1 based on a mod of u_time
+            // A frequency of 10 dixided by the layer index (10 / layers * layer)
+            float scale = mod((u_time * u_snowSpeed + zoomSpeed / float(layers) * float(layer)) / zoomSpeed, -1.);
+            uv *= 20.; // The initial scale. Increasing this makes the cells smaller and the "speed" apepar faster
+            uv *= scale*scale; // then modifying the overall scale by the generated amount
+            // uv *= 1. + ( ( n*.5 ) * ( length(_uv) ) );
+            // uv += .5*float(layer);
+            uv = rotate2d(u_time * u_snowSpeed / 10.) * uv; // rotarting
+            uv += vec2(25. + sin(u_time * u_snowSpeed * .1)) * float(layer); // ofsetting the UV by an arbitrary amount to make the layer appear different
+
+            // render
+            vec3 pass = render(uv * multiplier, scale, colour) * .2; // render the pass
+
+             // this is the opacity of the layer fading in from the "bottom"
+            opacity = 1. + scale;
+            float _opacity = opacity;
+            
+            // pass += n * .5 * mix(vec3(0., .5, 1.5), vec3(1., .5, 0.), opacity);
+            
+            // This is the opacity of the layer fading out at the top (we want this minimal, hence the smoothstep)
+            float endOpacity = smoothstep(0., 0.4, scale * -1.);
+            opacity += endOpacity;
+
+            return pass * _opacity * endOpacity * u_snowIntensity;
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy);
+
+            if(u_resolution.y < u_resolution.x) {
+                uv /= u_resolution.y;
+            } else {
+                uv /= u_resolution.x;
+            }
+
+            // uv.y += cos(u_time * .1) * .5;
+            // uv.x += sin(u_time * .1) * .5;
+          
+            // float n = fbm(uv * 3. - 2.);
+            float n = fbm((uv + vec2(sin(u_time * u_snowSpeed * .1), u_time * u_snowSpeed * .1)) * 2. - 2.);
+
+            vec3 colour = vec3(0.);
+            // colour = n * mix(vec3(0., .5, 1.5), vec3(1., .5, -.1), n);
+            colour = n * mix(vec3(0., .5, 1.5), clamp(vec3(1., .5, .25)*2., 0., 1.), n);
+            // colour -= n*n*n*n*.4;
+            // colour += smoothstep(.8, 2.5, sin(n*n*n*8.))*.4;
+
+            float opacity = 1.;
+            float opacity_sum = 1.;
+
+            for(int i = 1; i <= layers; i++) {
+                colour += renderLayer(i, layers, uv, opacity, colour, n);
+                opacity_sum += opacity;
+            }
+
+            colour /= opacity_sum;
+
+            gl_FragColor = vec4(clamp(colour * 20., 0., 1.), u_snowIntensity);
+        }
+    </script>
 
     <script>
         // Scene setup
@@ -176,7 +365,15 @@
         controls.addEventListener('change', updateZoomDisplay);
 
         const ambient = new THREE.AmbientLight(0xffffff, 0.35); scene.add(ambient);
-        const dir = new THREE.DirectionalLight(0xffffff, 0.9); dir.position.set(20, 30, 10); scene.add(dir);
+        
+        // Create orbiting directional light
+        const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+        scene.add(dir);
+        
+        // Light orbit variables
+        let lightOrbitRadius = 25;
+        let lightOrbitSpeed = 0.01;
+        let lightOrbitAngle = 0;
 
         const radius = 15;
         let solidSphere = null;
@@ -192,24 +389,27 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         let hoveredTile = null;
+        let debugMode = false;
 
         // biome settings with seed
         const settings = {
-            continents: 5,
+            continents: 6,
             seaLevel: 0.8,
-            noiseAmp: 0.15,
+            noiseAmp: 0.25,
             ridgeIntensity: 0.3,
             outlineAlpha: 0.05,
             cloudDensity: 0.35,
             cloudOpacity: 0.05,
             rippleIntensity: 0.5,
             rippleSpeed: 1.0,
-            treeDensity: 0.3,
+            treeDensity: 0.35,
             treeScale: 1.0,
             treesPerTile: 5,
             treeSpacing: 0.4,
-            snowIntensity: 0.6,
-            snowSpeed: 1.0,
+            iceIntensity: 0.5,
+            snowIntensity: 1.0,
+            snowSpeed: 0.8,
+            lightSpeed: 0.3,
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
@@ -431,70 +631,113 @@
             trees = [];
         }
 
-        // Snow particle system functions
+        // Discrete snow particle system for ice tiles
         function createSnowParticleSystem() {
-            if (!iceVertices || iceVertices.length === 0) return null;
+            if (!iceVertices || iceVertices.length === 0) {
+                console.log(`createSnowParticleSystem: No ice vertices available`);
+                return null;
+            }
             
             const snowIntensity = settings.snowIntensity || 0.6;
-            if (snowIntensity <= 0) return null;
+            if (snowIntensity <= 0) {
+                console.log(`createSnowParticleSystem: Snow intensity is 0`);
+                return null;
+            }
             
-            // Create geometry for snow particles
-            const particleCount = Math.floor(iceVertices.length * snowIntensity * 50);
+            // Create discrete snow particles above ice tiles
+            const particleCount = Math.floor(iceVertices.length * snowIntensity * 30); // 30 particles per ice vertex for dense snowfall
+            console.log(`createSnowParticleSystem: Creating ${particleCount} discrete snow particles from ${iceVertices.length} ice vertices`);
+            console.log(`Snow intensity: ${snowIntensity}, Particles per ice vertex: 30`);
+            
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(particleCount * 3);
             const velocities = new Float32Array(particleCount * 3);
             const lifetimes = new Float32Array(particleCount);
             
-            // Generate particles around ice vertices
+            // Generate snow particles above ice vertices
             for (let i = 0; i < particleCount; i++) {
                 const iceVertex = iceVertices[Math.floor(Math.random() * iceVertices.length)];
                 const normal = iceVertex.clone().normalize();
                 
-                // Create a random offset around the ice area
-                const offset = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2
-                ).normalize().multiplyScalar(0.5 + Math.random() * 1.5);
+                // Position particles very close to surface, well below cloud level
+                const heightAboveIce = 0.1 + Math.random() * 0.3; // 0.1-0.4 units above ice (very close to surface)
+                const position = iceVertex.clone().add(normal.clone().multiplyScalar(heightAboveIce));
                 
-                // Position above the ice surface
-                const position = iceVertex.clone().add(normal.clone().multiplyScalar(1 + Math.random() * 3));
-                position.add(offset);
+                // Add minimal horizontal spread - keep snow only on ice tiles
+                const spread = 0.3; // Very small spread to keep snow on ice tiles only
+                const horizontalOffset = new THREE.Vector3(
+                    (Math.random() - 0.5) * spread * 2,
+                    (Math.random() - 0.5) * spread * 2,
+                    (Math.random() - 0.5) * spread * 2
+                );
+                position.add(horizontalOffset);
                 
                 positions[i * 3] = position.x;
                 positions[i * 3 + 1] = position.y;
                 positions[i * 3 + 2] = position.z;
                 
-                // Set downward velocity with some randomness
-                const velocity = normal.clone().multiplyScalar(-0.01 - Math.random() * 0.02);
+                // Debug first few particle positions
+                if (i < 5) {
+                    console.log(`Particle ${i} position:`, position.x, position.y, position.z, `distance from origin: ${position.length()}`);
+                    console.log(`Ice vertex:`, iceVertex.x, iceVertex.y, iceVertex.z, `distance from origin: ${iceVertex.length()}`);
+                }
+                
+                // Set velocity to fall very slowly toward the ice surface
+                const velocity = normal.clone().multiplyScalar(-0.005 - Math.random() * 0.01); // Much slower fall
+                
+                // Add very gentle wind/drift for natural snowfall
                 velocity.add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.005,
-                    (Math.random() - 0.5) * 0.005,
-                    (Math.random() - 0.5) * 0.005
+                    (Math.random() - 0.5) * 0.003,
+                    (Math.random() - 0.5) * 0.003,
+                    (Math.random() - 0.5) * 0.003
                 ));
                 
                 velocities[i * 3] = velocity.x;
                 velocities[i * 3 + 1] = velocity.y;
                 velocities[i * 3 + 2] = velocity.z;
                 
-                lifetimes[i] = Math.random() * 100; // Random starting lifetime
+                lifetimes[i] = 200 + Math.random() * 400; // Much longer lifetime for very slow fall
             }
             
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
             geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
             
-            // Create snow material
+            // Create a circular texture for soft, blurred snow particles
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            // Create circular gradient from white center to transparent edges
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.4)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 64, 64);
+            
+            const snowTexture = new THREE.CanvasTexture(canvas);
+            
+            // Create material with the soft texture
             const material = new THREE.PointsMaterial({
-                color: 0xffffff,
-                size: 0.05,
+                color: 0xffffff, // White snow
+                size: 0.12, // Slightly larger to show the soft texture better
+                map: snowTexture, // Use the soft circular texture
                 transparent: true,
                 opacity: 0.8,
                 blending: THREE.AdditiveBlending,
-                depthWrite: false
+                depthWrite: false,
+                sizeAttenuation: true,
+                alphaTest: 0.01 // Low alpha test for soft edges
             });
             
-            return new THREE.Points(geometry, material);
+            const snowPoints = new THREE.Points(geometry, material);
+            
+            console.log(`createSnowParticleSystem: Created ${particleCount} discrete snow particles`);
+            return snowPoints;
         }
 
         function clearSnow() {
@@ -506,59 +749,208 @@
             snowParticles = [];
         }
 
+        // Chance-based ice generation system
+        function generateChanceBasedIce() {
+            clearSnow();
+            
+            if (settings.iceIntensity <= 0) return;
+            
+            // Don't reset ice vertices - preserve existing ones from guaranteed ice generation
+            // iceVertices = []; // Removed this line to preserve guaranteed ice vertices
+            
+            // Get all tiles from the scene
+            const tiles = [];
+            scene.traverse((child) => {
+                if (child.userData && child.userData.debugData) {
+                    tiles.push(child);
+                }
+            });
+            
+            // Debug: count cold tiles
+            let coldTiles = 0;
+            let oceanTiles = 0;
+            
+            // First pass: determine which tiles should become ice based on temperature
+            const iceTiles = [];
+            tiles.forEach(tile => {
+                const debugData = tile.userData.debugData;
+                const tempC = debugData.temperatureCelsius;
+                const elev = debugData.elevation;
+                const moist = debugData.moisture;
+                
+                if (debugData.biomeType === 'ocean') {
+                    oceanTiles++;
+                }
+                
+                // Only consider tiles below 0°C that aren't already ocean
+                if (tempC < 0 && debugData.biomeType !== 'ocean') {
+                    coldTiles++;
+                    
+                    // Much more restrictive chance calculation
+                    const humidityFactor = moist; // No minimum, use actual humidity
+                    const heightFactor = Math.min(1, (elev - settings.seaLevel) / 0.6); // Higher elevation required
+                    const baseChance = humidityFactor * heightFactor * settings.iceIntensity * 0.1; // Much lower base chance (max 10%)
+                    
+                    // Random roll
+                    const roll = Math.random();
+                    
+                    if (roll < baseChance) {
+                        iceTiles.push(tile);
+                        // Change tile to ice biome
+                        tile.material.color.setHex(0xE6F3FF); // Ice color
+                        tile.userData.originalColor = 0xE6F3FF; // Update original color for hover system
+                        debugData.biomeType = 'ice';
+                        
+                        // Store vertex for snow particle generation - use the stored vertex position
+                        const vertexPos = debugData.vertexPosition;
+                        console.log(`Storing ice vertex from chance-based - vertex position:`, vertexPos.x, vertexPos.y, vertexPos.z);
+                        iceVertices.push(vertexPos.clone());
+                    }
+                }
+            });
+            
+            // Second pass: add neighbor bonus
+            iceTiles.forEach(iceTile => {
+                // Check neighboring tiles
+                tiles.forEach(tile => {
+                    if (tile === iceTile) return;
+                    
+                    const debugData = tile.userData.debugData;
+                    const tempC = debugData.temperatureCelsius;
+                    
+                    // Only consider cold tiles that don't already have ice and aren't ocean
+                    if (tempC < 0 && !iceTiles.includes(tile) && debugData.biomeType !== 'ocean') {
+                        const distance = iceTile.position.distanceTo(tile.position);
+                        
+                        // If close enough to be a neighbor
+                        if (distance < 0.3) {
+                            // Neighbor bonus chance
+                            const neighborChance = 0.05 * settings.iceIntensity; // 5% bonus chance scaled by intensity
+                            const roll = Math.random();
+                            
+                            if (roll < neighborChance) {
+                                iceTiles.push(tile);
+                                // Change tile to ice biome
+                                tile.material.color.setHex(0xE6F3FF); // Ice color
+                                tile.userData.originalColor = 0xE6F3FF; // Update original color for hover system
+                                debugData.biomeType = 'ice';
+                                
+                                // Store vertex for snow particle generation - use the stored vertex position
+                                const vertexPos = debugData.vertexPosition;
+                                console.log(`Storing ice vertex from neighbor bonus - vertex position:`, vertexPos.x, vertexPos.y, vertexPos.z);
+                                iceVertices.push(vertexPos.clone());
+                            }
+                        }
+                    }
+                });
+            });
+            
+            console.log(`Found ${coldTiles} cold tiles, ${oceanTiles} ocean tiles, generated ${iceTiles.length} ice tiles from ${tiles.length} total tiles`);
+            console.log(`Total ice vertices available: ${iceVertices.length}`);
+        }
+
         function generateSnowEffects() {
             clearSnow();
             
-            if (settings.snowIntensity <= 0) return;
+            console.log(`generateSnowEffects called - snowIntensity: ${settings.snowIntensity}, iceVertices: ${iceVertices.length}`);
+            
+            if (settings.snowIntensity <= 0) {
+                console.log(`Snow intensity is 0, not generating snow particles`);
+                return;
+            }
+            
+            console.log(`Proceeding with snow generation...`);
             
             const snow = createSnowParticleSystem();
             if (snow) {
                 snowParticles.push(snow);
                 snowGroup.add(snow);
-                console.log(`Generated snow with ${snow.geometry.attributes.position.count} particles`);
+                console.log(`Generated snow with ${snow.geometry.attributes.position.count} particles from ${iceVertices.length} ice vertices`);
+                console.log(`Snow group children count: ${snowGroup.children.length}`);
+                console.log(`Snow particles array length: ${snowParticles.length}`);
+            } else {
+                console.log(`Failed to create snow particles - iceVertices.length: ${iceVertices.length}`);
             }
         }
 
         function updateSnowParticles() {
-            snowParticles.forEach(snow => {
-                if (!snow.geometry.attributes.position) return;
+            snowParticles.forEach(snowItem => {
+                // Handle grouped snow (with test sphere)
+                if (snowItem.children && snowItem.children.length > 0) {
+                    const snow = snowItem.children.find(child => child.type === 'Points');
+                    if (!snow || !snow.geometry || !snow.geometry.attributes.position) return;
+                    
+                    // Update the Points object within the group
+                    updateSingleSnowSystem(snow);
+                } else if (snowItem.geometry && snowItem.geometry.attributes.position) {
+                    // Handle direct Points object
+                    updateSingleSnowSystem(snowItem);
+                }
+            });
+        }
+        
+        function updateSingleSnowSystem(snow) {
+            if (!snow.geometry || !snow.geometry.attributes.position) return;
+            const positions = snow.geometry.attributes.position.array;
+            const velocities = snow.geometry.attributes.velocity.array;
+            const lifetimes = snow.geometry.attributes.lifetime.array;
+            const snowSpeed = settings.snowSpeed || 1.0;
+            
+            for (let i = 0; i < positions.length / 3; i++) {
+                const idx = i * 3;
                 
-                const positions = snow.geometry.attributes.position.array;
-                const velocities = snow.geometry.attributes.velocity.array;
-                const lifetimes = snow.geometry.attributes.lifetime.array;
-                const snowSpeed = settings.snowSpeed || 1.0;
+                // Update position based on velocity
+                positions[idx] += velocities[idx] * snowSpeed;
+                positions[idx + 1] += velocities[idx + 1] * snowSpeed;
+                positions[idx + 2] += velocities[idx + 2] * snowSpeed;
                 
-                for (let i = 0; i < positions.length / 3; i++) {
-                    const idx = i * 3;
-                    
-                    // Update position based on velocity
-                    positions[idx] += velocities[idx] * snowSpeed;
-                    positions[idx + 1] += velocities[idx + 1] * snowSpeed;
-                    positions[idx + 2] += velocities[idx + 2] * snowSpeed;
-                    
-                    // Update lifetime
-                    lifetimes[i] -= 1;
-                    
-                    // Reset particle if lifetime is over or too far from planet
-                    const pos = new THREE.Vector3(positions[idx], positions[idx + 1], positions[idx + 2]);
-                    if (lifetimes[i] <= 0 || pos.length() < radius * 0.8) {
-                        // Respawn particle above ice
-                        if (iceVertices.length > 0) {
-                            const iceVertex = iceVertices[Math.floor(Math.random() * iceVertices.length)];
-                            const normal = iceVertex.clone().normalize();
-                            const newPos = iceVertex.clone().add(normal.clone().multiplyScalar(1 + Math.random() * 3));
-                            
-                            positions[idx] = newPos.x;
-                            positions[idx + 1] = newPos.y;
-                            positions[idx + 2] = newPos.z;
-                            lifetimes[i] = 50 + Math.random() * 50;
-                        }
+                // Update lifetime
+                lifetimes[i] -= 1;
+                
+                // Reset particle if lifetime is over or hits the planet surface
+                const pos = new THREE.Vector3(positions[idx], positions[idx + 1], positions[idx + 2]);
+                if (lifetimes[i] <= 0 || pos.length() < radius * 0.98) {
+                    // Respawn particle above a random ice vertex
+                    if (iceVertices.length > 0) {
+                        const iceVertex = iceVertices[Math.floor(Math.random() * iceVertices.length)];
+                        const normal = iceVertex.clone().normalize();
+                        
+                        // Position closer to the ice surface with spread
+                        const heightAboveIce = 0.4 + Math.random() * 0.3; // Very close to surface, matching initial generation
+                        const newPos = iceVertex.clone().add(normal.clone().multiplyScalar(heightAboveIce));
+                        
+                        // Add horizontal spread
+                        const spread = 0.3; // Very small spread to keep snow on ice tiles only
+                        const horizontalOffset = new THREE.Vector3(
+                            (Math.random() - 0.5) * spread * 2,
+                            (Math.random() - 0.5) * spread * 2,
+                            (Math.random() - 0.5) * spread * 2
+                        );
+                        newPos.add(horizontalOffset);
+                        
+                        positions[idx] = newPos.x;
+                        positions[idx + 1] = newPos.y;
+                        positions[idx + 2] = newPos.z;
+                        
+                        // Set new velocity toward ice surface
+                        const newVelocity = normal.clone().multiplyScalar(-0.01 - Math.random() * 0.02);
+                        newVelocity.add(new THREE.Vector3(
+                            (Math.random() - 0.5) * 0.005,
+                            (Math.random() - 0.5) * 0.005,
+                            (Math.random() - 0.5) * 0.005
+                        ));
+                        
+                        velocities[idx] = newVelocity.x;
+                        velocities[idx + 1] = newVelocity.y;
+                        velocities[idx + 2] = newVelocity.z;
+                        
+                        lifetimes[i] = 100 + Math.random() * 200;
                     }
                 }
-                
-                snow.geometry.attributes.position.needsUpdate = true;
-                snow.geometry.attributes.lifetime.needsUpdate = true;
-            });
+            }
+            
+            snow.geometry.attributes.position.needsUpdate = true;
+            snow.geometry.attributes.lifetime.needsUpdate = true;
         }
 
         function generateForestTrees() {
@@ -1206,6 +1598,35 @@
                 // Smooth biome coloring with transitions
                 const isOcean = elev < settings.seaLevel;
                 let tileColor;
+                let moist = 0; // Default moisture
+                let biomeType = 'ocean'; // Default biome type
+                
+                // Calculate temperature for all tiles (ocean and land) in Celsius
+                const lat = Math.abs(center.y);
+                // Reduce extreme values by using gentler curves and smaller multipliers
+                let tempNormalized = 1 - Math.pow(lat, 1.1) - elev*0.3;
+                // Apply additional smoothing to reduce extreme values
+                tempNormalized = Math.max(0.1, Math.min(0.95, tempNormalized));
+                
+                // Convert to Celsius range (-10°C to 40°C)
+                let tempCelsius;
+                if (isOcean) {
+                    // Ocean temperatures: 2°C to 28°C (more stable than land)
+                    tempNormalized = Math.max(0.2, Math.min(0.8, tempNormalized));
+                    tempCelsius = 2 + (tempNormalized - 0.2) * (28 - 2) / (0.8 - 0.2);
+                } else {
+                    // Land temperatures: -10°C to 40°C (full range, but skewed toward warmer)
+                    tempNormalized = Math.max(0, Math.min(1, tempNormalized));
+                    // Apply a curve to reduce tiles in the -10°C to 0°C range
+                    // Use a power curve to shift distribution toward warmer temperatures
+                    const skewedTemp = Math.pow(tempNormalized, 0.7); // 0.7 makes it skew warmer
+                    tempCelsius = -10 + skewedTemp * (40 - (-10));
+                }
+                
+                // Store both normalized (0-1) and Celsius values
+                const temp = tempNormalized; // Keep normalized for biome calculations (0-1 range)
+                const tempC = tempCelsius;   // Celsius for display (-10°C to 40°C range, skewed warmer)
+                
                 if (isOcean) {
                     // Ocean depth gradient
                     const depth = (settings.seaLevel - elev) / settings.seaLevel;
@@ -1215,12 +1636,11 @@
                     const g = Math.floor(deepBlue.g + (shallowBlue.g - deepBlue.g) * (1 - depth));
                     const b = Math.floor(deepBlue.b + (shallowBlue.b - deepBlue.b) * (1 - depth));
                     tileColor = (r << 16) | (g << 8) | b;
+                    biomeType = 'ocean';
                     countOcean++;
                 } else {
-                    const lat = Math.abs(center.y);
-                    let temp = 1 - Math.pow(lat, 1.25) - elev*0.5;
-                    temp = Math.max(0, Math.min(1, temp));
-                    const moist = Math.max(0, Math.min(1, 0.55*fbm(center, 1.8, 3) + 0.45*Math.max(0, center.dot(wind))))
+                    // Calculate moisture for land tiles
+                    moist = Math.max(0, Math.min(1, 0.55*fbm(center, 1.8, 3) + 0.45*Math.max(0, center.dot(wind))))
                                    * (0.9 + 0.3*(1-elev));
                     
                     // Define biome colors
@@ -1232,7 +1652,7 @@
                     const ridge = { r: 0x99, g: 0x66, b: 0x44 };    // distinctive ridge brown-orange
                     
                     let finalColor = grassland; // default
-                    let biomeType = 'grassland';
+                    biomeType = 'grassland';
                     
                     // Calculate ridge detection using ridge intensity setting
                     let ridgeValue = 0;
@@ -1257,12 +1677,14 @@
                     }
                     // High elevation areas
                     else if (elev > settings.seaLevel + 0.4) {
-                        if (temp < 0.1) { // More restrictive temperature for high elevation ice
+                        // Extremely cold high elevation = guaranteed ice
+                        if (temp < 0.02) { // Extremely cold high elevation (~-8°C)
                             finalColor = ice;
                             biomeType = 'ice';
                             countIce++;
                             
                             // Store vertex for snow generation
+                            console.log(`Storing ice vertex from guaranteed ice - vertex:`, vertex.x, vertex.y, vertex.z);
                             iceVertices.push(vertex.clone());
                         } else {
                             finalColor = mountain;
@@ -1270,22 +1692,11 @@
                             countLand++;
                         }
                     }
-                    // Cold regions = ice transition (more restrictive)
-                    else if (temp < 0.12) { // Much colder required for ice
-                        const coldFactor = 1 - (temp / 0.12);
-                        finalColor = {
-                            r: Math.floor(grassland.r + (ice.r - grassland.r) * coldFactor),
-                            g: Math.floor(grassland.g + (ice.g - grassland.g) * coldFactor),
-                            b: Math.floor(grassland.b + (ice.b - grassland.b) * coldFactor)
-                        };
-                        biomeType = coldFactor > 0.7 ? 'ice' : 'grassland'; // Higher threshold for ice
-                        if (coldFactor > 0.7) {
-                            countIce++;
-                            // Store vertex for snow generation
-                            iceVertices.push(vertex.clone());
-                        } else {
-                            countLand++;
-                        }
+                    // Cold regions - will be handled by chance-based ice system
+                    else if (temp < 0.1) { // Cold region threshold (~5°C)
+                        finalColor = grassland;
+                        biomeType = 'grassland';
+                        countLand++;
                     }
                     // Hot and dry = desert (works on any land elevation)
                     else if (moist < 0.5 && temp > 0.25 && elev > settings.seaLevel + 0.02) {
@@ -1356,6 +1767,19 @@
                 m.userData.tileId = vi; // unique tile identifier
                 m.userData.isTile = true; // mark as hoverable tile
                 
+                // Store debug data for biome calculations
+                m.userData.debugData = {
+                    elevation: elev,
+                    temperature: temp,
+                    temperatureCelsius: tempC,
+                    moisture: moist,
+                    biomeType: biomeType,
+                    isOcean: isOcean,
+                    latitude: Math.abs(center.y),
+                    seaLevel: settings.seaLevel,
+                    vertexPosition: vertex.clone() // Store the actual vertex position for snow particles
+                };
+                
                 tileGroup.add(m);
 
                 // Add rounded corner highlighting outline
@@ -1413,7 +1837,8 @@
             // Generate trees on forest tiles
             generateForestTrees();
             
-            // Generate snow effects on ice tiles
+            // Generate chance-based ice effects
+            generateChanceBasedIce();
             generateSnowEffects();
             
             console.log(`Created ${tilesCreated} tiles, counted ${countTotal} biomes, skipped ${skippedCount} vertices`);
@@ -1561,15 +1986,26 @@
             document.getElementById('treeSpacingValue').textContent = settings.treeSpacing.toFixed(1);
             generateForestTrees(); // Regenerate trees with new spacing
         }
+        function onIceIntensity(val) {
+            settings.iceIntensity = parseFloat(val);
+            document.getElementById('iceIntensityValue').textContent = settings.iceIntensity.toFixed(1);
+            generateChanceBasedIce(); // Regenerate chance-based ice
+            generateSnowEffects(); // Regenerate snow particles
+        }
         function onSnowIntensity(val) {
             settings.snowIntensity = parseFloat(val);
             document.getElementById('snowIntensityValue').textContent = settings.snowIntensity.toFixed(1);
-            generateSnowEffects(); // Regenerate snow with new intensity
+            generateSnowEffects(); // Regenerate snow particles with new intensity
         }
         function onSnowSpeed(val) {
             settings.snowSpeed = parseFloat(val);
             document.getElementById('snowSpeedValue').textContent = settings.snowSpeed.toFixed(1);
             // Snow speed changes are applied in real-time during animation, no regeneration needed
+        }
+        function onLightSpeed(val) {
+            settings.lightSpeed = parseFloat(val);
+            document.getElementById('lightSpeedValue').textContent = settings.lightSpeed.toFixed(1);
+            // Light speed changes are applied in real-time during animation, no regeneration needed
         }
         
         function updateWaterShaderSettings() {
@@ -1605,8 +2041,10 @@
         const treeScaleSlider = document.getElementById('treeScale');
         const treesPerTileSlider = document.getElementById('treesPerTile');
         const treeSpacingSlider = document.getElementById('treeSpacing');
+        const iceIntensitySlider = document.getElementById('iceIntensity');
         const snowIntensitySlider = document.getElementById('snowIntensity');
         const snowSpeedSlider = document.getElementById('snowSpeed');
+        const lightSpeedSlider = document.getElementById('lightSpeed');
         treeDensitySlider.addEventListener('input', e => onTreeDensity(e.target.value));
         treeDensitySlider.addEventListener('change', e => onTreeDensity(e.target.value));
         treeScaleSlider.addEventListener('input', e => onTreeScale(e.target.value));
@@ -1615,12 +2053,31 @@
         treesPerTileSlider.addEventListener('change', e => onTreesPerTile(e.target.value));
         treeSpacingSlider.addEventListener('input', e => onTreeSpacing(e.target.value));
         treeSpacingSlider.addEventListener('change', e => onTreeSpacing(e.target.value));
+        iceIntensitySlider.addEventListener('input', e => onIceIntensity(e.target.value));
+        iceIntensitySlider.addEventListener('change', e => onIceIntensity(e.target.value));
         snowIntensitySlider.addEventListener('input', e => onSnowIntensity(e.target.value));
         snowIntensitySlider.addEventListener('change', e => onSnowIntensity(e.target.value));
         snowSpeedSlider.addEventListener('input', e => onSnowSpeed(e.target.value));
         snowSpeedSlider.addEventListener('change', e => onSnowSpeed(e.target.value));
+        lightSpeedSlider.addEventListener('input', e => onLightSpeed(e.target.value));
+        lightSpeedSlider.addEventListener('change', e => onLightSpeed(e.target.value));
         
         regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild('regen'); });
+        
+        // Debug toggle functionality
+        const debugToggleBtn = document.getElementById('debug-toggle');
+        debugToggleBtn.addEventListener('click', () => {
+            debugMode = !debugMode;
+            debugToggleBtn.textContent = `Debug: ${debugMode ? 'On' : 'Off'}`;
+            debugToggleBtn.style.background = debugMode ? '#4FC3F7' : '#fff';
+            debugToggleBtn.style.color = debugMode ? '#fff' : '#000';
+            
+            // Hide debug overlay when turning off debug mode
+            if (!debugMode) {
+                const debugOverlay = document.getElementById('debug-overlay');
+                debugOverlay.style.display = 'none';
+            }
+        });
 
         // Initial
         setSeedLabel();
@@ -1649,6 +2106,10 @@
                 if (hoveredTile) {
                     resetTileColor(hoveredTile);
                     hoveredTile = null;
+                    // Hide debug info when not hovering
+                    if (debugMode) {
+                        hideDebugInfo();
+                    }
                 }
                 
                 // Apply new hover - find the closest tile intersection
@@ -1662,6 +2123,11 @@
                             hoveredTile = tile;
                             // Apply highlight based on material type
                             setTileHighlight(tile);
+                            
+                            // Show debug info if debug mode is enabled
+                            if (debugMode && tile.userData.debugData) {
+                                showDebugInfo(tile);
+                            }
                             break;
                         }
                     }
@@ -1696,6 +2162,38 @@
                 if (tile.material.color) {
                     tile.material.color.setHex(0xFFFF00);
                 }
+            }
+        }
+        
+        // Helper function to show debug info for a tile
+        function showDebugInfo(tile) {
+            const debugData = tile.userData.debugData;
+            const debugContent = document.getElementById('debug-content');
+            const debugOverlay = document.getElementById('debug-overlay');
+            
+            if (!debugData || !debugContent || !debugOverlay) return;
+            
+            // Format the debug information
+            const info = `
+                <div><strong>Biome:</strong> ${debugData.biomeType}</div>
+                <div><strong>Type:</strong> ${debugData.isOcean ? 'Ocean' : 'Land'}</div>
+                <div><strong>Elevation:</strong> ${debugData.elevation.toFixed(3)}</div>
+                <div><strong>Temperature:</strong> ${debugData.temperatureCelsius.toFixed(1)}°C</div>
+                <div><strong>Moisture:</strong> ${debugData.moisture.toFixed(3)}</div>
+                <div><strong>Latitude:</strong> ${debugData.latitude.toFixed(3)}</div>
+                <div><strong>Sea Level:</strong> ${debugData.seaLevel.toFixed(3)}</div>
+                <div><strong>Tile ID:</strong> ${tile.userData.tileId}</div>
+            `;
+            
+            debugContent.innerHTML = info;
+            debugOverlay.style.display = 'block';
+        }
+        
+        // Helper function to hide debug info
+        function hideDebugInfo() {
+            const debugOverlay = document.getElementById('debug-overlay');
+            if (debugOverlay) {
+                debugOverlay.style.display = 'none';
             }
         }
         
@@ -1738,6 +2236,15 @@
             
             // Update snow particle animation
             updateSnowParticles();
+            
+            // Update orbiting light
+            lightOrbitAngle += lightOrbitSpeed * settings.lightSpeed;
+            const lightX = Math.cos(lightOrbitAngle) * lightOrbitRadius;
+            const lightY = Math.sin(lightOrbitAngle) * lightOrbitRadius * 0.3; // Slight vertical variation
+            const lightZ = Math.sin(lightOrbitAngle) * lightOrbitRadius;
+            dir.position.set(lightX, lightY, lightZ);
+            dir.target.position.set(0, 0, 0); // Always point toward planet center
+            dir.target.updateMatrixWorld();
             
             renderer.render(scene, camera);
         })();

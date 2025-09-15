@@ -28,11 +28,12 @@ A fun and educational Single Page Application (SPA) that teaches colors through 
 
 ### Installation
 1. Clone or download this repository
-2. Open `index.html` in your web browser
-3. Enjoy the game!
+2. Open `index.html` in your web browser for the main color learning games
+3. Open `planet.html` in your web browser for the 3D planet visualization
+4. Enjoy the games!
 
 ### Running the Game
-Simply open `index.html` in any modern web browser. The game will work immediately without any build process or server setup.
+Simply open `index.html` in any modern web browser for the main color learning games, or `planet.html` for the 3D planet visualization. Both will work immediately without any build process or server setup.
 
 ## 📱 Cross-Platform Compatibility
 
@@ -62,6 +63,15 @@ The game is designed to work seamlessly across:
   - Rotatable globe with a projected hex grid
   - Place items (🌳 🏠 🚗 🚩) on individual hexes
   - Item counter, palette selection, and clear button
+
+### 4. 3D Planet Visualization (Advanced)
+  - Interactive 3D planet with procedurally generated biomes
+  - Realistic terrain generation with continents, oceans, mountains, and ice caps
+  - Dynamic weather effects including clouds, water ripples, and snow particles
+  - **Orbiting Light Source**: Dynamic lighting that creates realistic day/night cycles and changing shadows
+  - Customizable parameters for terrain generation, biome distribution, and atmospheric effects
+  - Built with Three.js for smooth 3D rendering and interaction
+  - **Debug Mode**: Toggle to see biome calculation values (temperature, elevation, moisture, etc.) when hovering over tiles
 
 - 20 randomly selected words from 4 categories
 - Interactive word grid
@@ -119,6 +129,8 @@ The game automatically adapts to different screen sizes:
 - **CSS3**: Modern styling with Flexbox and Grid
 - **SVG**: Vector-based paintable templates (crisp on all screens)
 - **Vanilla JavaScript**: No frameworks, pure ES6+ JavaScript
+- **Three.js**: 3D graphics library for planet visualization
+- **Simplex Noise**: Procedural terrain generation
 - **Responsive Design**: Mobile-first approach with media queries
 
 ### Browser Support
@@ -144,6 +156,29 @@ This game helps learners:
 - **Categorization**: Develop logical thinking and classification skills
 - **Vocabulary**: Expand word knowledge across different categories
 - **Hand-Eye Coordination**: Improve motor skills through interactive gameplay
+
+## 📝 Recent Updates
+
+### Version 1.1 - Planet Visualization Improvements
+- **Dramatically Reduced Ice Coverage**: Made temperature thresholds extremely restrictive to match desert tile rarity
+  - High elevation ice threshold: 0.1 → 0.02 (80% more restrictive)
+  - Cold region ice threshold: 0.12 → 0.03 (75% more restrictive)
+  - Ice transition threshold: 0.7 → 0.9 (29% more restrictive)
+- **Optimized Snow Effects**: Reduced snow particle density for better performance
+  - Snow particle multiplier: 50x → 15x (70% reduction in particle count)
+- **Enhanced Biome Balance**: Ice tiles now appear with similar rarity to desert tiles for more realistic planet generation
+- **Debug Mode Added**: New toggle button to inspect biome calculation values
+  - Hover over tiles to see temperature, elevation, moisture, latitude, and biome type
+  - Temperature displayed in realistic Celsius range (-10°C to 40°C)
+  - Ocean temperatures: 2°C to 28°C (more stable than land)
+  - Land temperatures: -10°C to 40°C (full range for biome determination)
+  - Helps understand how different parameters affect biome generation
+  - Toggle on/off with the "Debug" button in the UI
+- **Dynamic Lighting System**: Added orbiting light source for realistic day/night cycles
+  - Light orbits around the planet creating changing shadows and lighting
+  - Adjustable orbit speed via "Light Orbit Speed" slider (0-3x speed)
+  - Creates realistic day/night transitions and dynamic shadow movement
+  - Enhances the 3D visual experience with dynamic lighting effects
 
 ## 🚀 Future Enhancements
 
