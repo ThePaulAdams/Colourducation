@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proto Planet Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(ellipse at 50% 50%, #001a35 0%, #00050a 100%);
+            font-family: 'Inter', sans-serif;
+            color: #eee;
+        }
+        canvas { display: block; }
+
+        .info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #cce7ff;
+            font-family: 'Inter', sans-serif;
+            pointer-events: none;
+            font-size: 16px;
+        }
+
+        .ui {
+            position: absolute;
+            left: 16px;
+            bottom: 16px;
+            z-index: 10;
+            background: rgba(0, 25, 50, 0.2);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cce7ff;
+            padding: 12px 14px;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .ui label {
+            font-size: 12px;
+            color: #b3d9ff;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .ui input[type=range] {
+            width: 240px;
+            accent-color: #4FC3F7;
+            margin-bottom: 10px;
+        }
+
+        .ui input[type=text] {
+            width: 240px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #cce7ff;
+            padding: 5px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .ui button {
+            background: rgba(79, 195, 247, 0.2);
+            border: 1px solid rgba(79, 195, 247, 0.4);
+            color: #cce7ff;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 8px 16px;
+            margin: 5px 5px 5px 0;
+        }
+
+        .ui button:hover {
+            background: rgba(79, 195, 247, 0.3);
+            border-color: rgba(79, 195, 247, 0.6);
+        }
+
+        .ui button.active {
+            background: #4FC3F7;
+            color: #000;
+        }
+
+        .value {
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .section {
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 10px;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #4FC3F7;
+            margin-bottom: 8px;
+        }
+
+        /* Debug overlay styles */
+        #debug-overlay {
+            position: absolute;
+            top: 50px;
+            right: 20px;
+            background: rgba(0, 25, 50, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cce7ff;
+            padding: 15px;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            display: none;
+        }
+
+        /* Progress panel */
+        #progressPanel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 25, 50, 0.9);
+            backdrop-filter: blur(12px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cce7ff;
+            padding: 20px;
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">Proto Planet Generator - Drag to Rotate, Scroll to Zoom</div>
+
+    <!-- Viewport Frame for proto.js -->
+    <div id="viewportFrame" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></div>
+
+    <!-- Proto.js required UI elements -->
+    <div id="helpPanel" style="display: none;"></div>
+    <div id="controlPanel" style="display: none;"></div>
+    <div id="dataPanel" style="display: none;"></div>
+    <div id="updatePanel" style="display: none;"></div>
+
+    <!-- Proto.js buttons (hidden, will be controlled by our UI) -->
+    <div style="display: none;">
+        <button id="showSunlightButton"></button>
+        <button id="showPlateBoundariesButton"></button>
+        <button id="showPlateMovementsButton"></button>
+        <button id="showAirCurrentsButton"></button>
+        <button id="lowDetailButton"></button>
+        <button id="mediumDetailButton"></button>
+        <button id="highDetailButton"></button>
+        <button id="generatePlanetButton"></button>
+        <button id="advancedSettingsButton"></button>
+    </div>
+
+    <!-- Debug Info Overlay -->
+    <div id="debug-overlay">
+        <div id="debug-content">Hover over a tile to see debug info</div>
+    </div>
+
+    <!-- Progress Panel -->
+    <div id="progressPanel" style="display: none;">
+        <div id="progressActionLabel">Generating Planet...</div>
+        <div id="progressBarFrame" style="background: rgba(255,255,255,0.1); height: 10px; border-radius: 5px; margin: 10px 0;">
+            <div id="progressBar" style="background: #4FC3F7; height: 100%; border-radius: 5px; width: 0%; transition: width 0.3s;"></div>
+        </div>
+        <div id="progressBarLabel">Initializing...</div>
+    </div>
+
+    <!-- Main UI Panel -->
+    <div class="ui">
+        <div class="section">
+            <div class="section-title">Planet Generation</div>
+            <button id="generateButton">Generate New Planet</button>
+            <button id="advancedButton">Advanced Settings</button>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Rendering</div>
+            <button id="terrainButton" class="active">Terrain</button>
+            <button id="plateButton">Plates</button>
+            <button id="temperatureButton">Temperature</button>
+            <button id="moistureButton">Moisture</button>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Lighting & Effects</div>
+            <button id="sunlightButton" class="active">Sunlight: On</button>
+            <button id="debugModeButton">Debug Mode: Off</button>
+        </div>
+
+        <div class="section">
+            <div class="section-title">View Controls</div>
+            <label>Detail Level: <span class="value" id="detailValue">Medium</span></label>
+            <input type="range" id="detailRange" min="0" max="2" value="1" step="1">
+
+            <label>Sun Time: <span class="value" id="sunTimeValue">0</span></label>
+            <input type="range" id="sunTimeRange" min="-180" max="180" value="0">
+
+            <label>Zoom: <span class="value" id="zoomValue">1.0</span></label>
+            <input type="range" id="zoomRange" min="0.5" max="3.0" value="1.0" step="0.1">
+        </div>
+    </div>
+
+    <!-- Advanced Settings Panel (initially hidden) -->
+    <div id="generationSettingsPanel" style="
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 25, 50, 0.95);
+        backdrop-filter: blur(12px);
+        border-radius: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: #cce7ff;
+        padding: 20px;
+        font-family: 'Inter', sans-serif;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        z-index: 1000;
+        display: none;
+        max-width: 400px;
+        width: 90%;
+    ">
+        <div class="section-title" style="text-align: center; margin-bottom: 20px;">Advanced Planet Settings</div>
+
+        <div class="section">
+            <label>Detail Level: <span class="value" id="detailLevelLabel">Medium</span></label>
+            <input type="range" id="detailLevelRange" min="10" max="30" value="20">
+
+            <label>Distortion Level: <span class="value" id="distortionLevelLabel">100%</span></label>
+            <input type="range" id="distortionLevelRange" min="0" max="200" value="100">
+
+            <label>Tectonic Plates: <span class="value" id="tectonicPlateCountLabel">50</span></label>
+            <input type="range" id="tectonicPlateCountRange" min="200" max="1000" value="500">
+
+            <label>Oceanic Rate: <span class="value" id="oceanicRateLabel">70%</span></label>
+            <input type="range" id="oceanicRateRange" min="0" max="100" value="70">
+
+            <label>Heat Level: <span class="value" id="heatLevelLabel">100%</span></label>
+            <input type="range" id="heatLevelRange" min="0" max="100" value="0">
+
+            <label>Moisture Level: <span class="value" id="moistureLevelLabel">100%</span></label>
+            <input type="range" id="moistureLevelRange" min="0" max="100" value="0">
+
+            <label>Seed:</label>
+            <input type="text" id="seedTextBox" placeholder="Random seed (optional)">
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <button id="advancedGeneratePlanetButton">Generate Planet</button>
+            <button id="advancedCancelButton">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Include latest Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- Include jQuery and jQuery UI for proto.js compatibility -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+
+    <!-- Modern Three.js r128 Implementation -->
+    <script>
+        console.log('Loading modern Three.js implementation...');
+
+        // Pre-emptively create THREE.Projector before proto.js tries to use it
+        THREE.Projector = function() {
+            // Empty constructor - will be replaced with modern Raycaster functionality
+        };
+
+        // Pre-emptively create THREE.Geometry stub before proto.js tries to use it
+        THREE.Geometry = function() {
+            // Empty constructor - functions will be modernized to use BufferGeometry
+            this.vertices = [];
+            this.faces = [];
+            this.colors = [];
+        };
+
+        // Pre-emptively create THREE.Face3 stub before proto.js tries to use it
+        THREE.Face3 = function(a, b, c, normal, colors) {
+            // Empty constructor - functions will be modernized to use BufferGeometry
+            this.a = a;
+            this.b = b;
+            this.c = c;
+            this.normal = normal || new THREE.Vector3();
+            this.vertexColors = colors || [];
+        };
+
+        // Override proto.js initialization after it loads
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                // 1. Fix renderer initialization
+                if (typeof renderer !== 'undefined' && renderer && renderer.setFaceCulling) {
+                    // Remove deprecated setFaceCulling call - modern Three.js handles this automatically
+                    renderer.setFaceCulling = function() { return this; };
+                }
+
+                // 2. Replace projector with modern Raycaster
+                window.raycaster = new THREE.Raycaster();
+
+                // Override the projector variable and its usage
+                window.projector = {
+                    pickingRay: function(vector, camera) {
+                        // Convert old pickingRay method to modern setFromCamera
+                        raycaster.setFromCamera(vector, camera);
+                        return raycaster;
+                    },
+                    unprojectVector: function(vector, camera) {
+                        return vector.unproject(camera);
+                    }
+                };
+
+                // 3. Override buildSurfaceRenderObject with modern BufferGeometry version
+                if (typeof buildSurfaceRenderObject !== 'undefined') {
+                    window.buildSurfaceRenderObject = function(tiles, random, action) {
+                        console.log('Using modern BufferGeometry implementation');
+
+                        const vertices = [];
+                        const normals = [];
+                        const colors = [];
+                        const indices = [];
+
+                        let vertexIndex = 0;
+
+                        const terrainColors = [];
+                        const plateColors = [];
+                        const elevationColors = [];
+                        const temperatureColors = [];
+                        const moistureColors = [];
+
+                        let i = 0;
+                        action.executeSubaction(function(action) {
+                            if (i >= tiles.length) return;
+
+                            const tile = tiles[i];
+
+                            // Calculate colors (same logic as original)
+                            const colorDeviance = new THREE.Color(random.unit(), random.unit(), random.unit());
+                            let terrainColor;
+
+                            if (tile.elevation <= 0) {
+                                if (tile.biome === "ocean") terrainColor = new THREE.Color(0x0066FF).lerp(new THREE.Color(0x0044BB), Math.min(-tile.elevation, 1)).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "oceanGlacier") terrainColor = new THREE.Color(0xDDEEFF).lerp(colorDeviance, 0.10);
+                                else terrainColor = new THREE.Color(0xFF00FF);
+                            } else if (tile.elevation < 0.6) {
+                                const normalizedElevation = tile.elevation / 0.6;
+                                if (tile.biome === "desert") terrainColor = new THREE.Color(0xDDDD77).lerp(new THREE.Color(0xBBBB55), normalizedElevation).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "rainForest") terrainColor = new THREE.Color(0x44DD00).lerp(new THREE.Color(0x229900), normalizedElevation).lerp(colorDeviance, 0.20);
+                                else if (tile.biome === "rocky") terrainColor = new THREE.Color(0xAA9977).lerp(new THREE.Color(0x887755), normalizedElevation).lerp(colorDeviance, 0.15);
+                                else if (tile.biome === "plains") terrainColor = new THREE.Color(0x99BB44).lerp(new THREE.Color(0x667722), normalizedElevation).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "grassland") terrainColor = new THREE.Color(0x77CC44).lerp(new THREE.Color(0x448822), normalizedElevation).lerp(colorDeviance, 0.15);
+                                else if (tile.biome === "swamp") terrainColor = new THREE.Color(0x77AA44).lerp(new THREE.Color(0x446622), normalizedElevation).lerp(colorDeviance, 0.25);
+                                else if (tile.biome === "deciduousForest") terrainColor = new THREE.Color(0x33AA22).lerp(new THREE.Color(0x116600), normalizedElevation).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "tundra") terrainColor = new THREE.Color(0x9999AA).lerp(new THREE.Color(0x777788), normalizedElevation).lerp(colorDeviance, 0.15);
+                                else if (tile.biome === "landGlacier") terrainColor = new THREE.Color(0xDDEEFF).lerp(colorDeviance, 0.10);
+                                else terrainColor = new THREE.Color(0xFF00FF);
+                            } else if (tile.elevation < 0.8) {
+                                const normalizedElevation = (tile.elevation - 0.6) / 0.2;
+                                if (tile.biome === "tundra") terrainColor = new THREE.Color(0x777788).lerp(new THREE.Color(0x666677), normalizedElevation).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "coniferForest") terrainColor = new THREE.Color(0x338822).lerp(new THREE.Color(0x116600), normalizedElevation).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "snow") terrainColor = new THREE.Color(0xEEEEEE).lerp(new THREE.Color(0xDDDDDD), normalizedElevation).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "mountain") terrainColor = new THREE.Color(0x555544).lerp(new THREE.Color(0x444433), normalizedElevation).lerp(colorDeviance, 0.05);
+                                else terrainColor = new THREE.Color(0xFF00FF);
+                            } else {
+                                const normalizedElevation = (tile.elevation - 0.8) / 0.2;
+                                if (tile.biome === "snow") terrainColor = new THREE.Color(0xEEEEEE).lerp(new THREE.Color(0xDDDDDD), normalizedElevation).lerp(colorDeviance, 0.10);
+                                else if (tile.biome === "mountain") terrainColor = new THREE.Color(0x444433).lerp(new THREE.Color(0x333322), normalizedElevation).lerp(colorDeviance, 0.05);
+                                else terrainColor = new THREE.Color(0xFF00FF);
+                            }
+
+                            // Create tile geometry (simplified for BufferGeometry)
+                            const baseIndex = vertexIndex;
+
+                            // Add center vertex
+                            const center = tile.averagePosition;
+                            vertices.push(center.x, center.y, center.z);
+                            normals.push(tile.normal.x, tile.normal.y, tile.normal.z);
+                            colors.push(terrainColor.r, terrainColor.g, terrainColor.b);
+                            vertexIndex++;
+
+                            // Add corner vertices and create triangles
+                            for (let j = 0; j < tile.corners.length; j++) {
+                                const corner1 = tile.corners[j].position;
+                                const corner2 = tile.corners[(j + 1) % tile.corners.length].position;
+
+                                // Add corner vertices
+                                vertices.push(corner1.x, corner1.y, corner1.z);
+                                normals.push(tile.normal.x, tile.normal.y, tile.normal.z);
+                                colors.push(terrainColor.r, terrainColor.g, terrainColor.b);
+
+                                vertices.push(corner2.x, corner2.y, corner2.z);
+                                normals.push(tile.normal.x, tile.normal.y, tile.normal.z);
+                                colors.push(terrainColor.r, terrainColor.g, terrainColor.b);
+
+                                // Create triangle (center, corner1, corner2)
+                                indices.push(baseIndex, vertexIndex, vertexIndex + 1);
+
+                                vertexIndex += 2;
+                            }
+
+                            ++i;
+                            action.loop(i / tiles.length);
+                        });
+
+                        // Create modern BufferGeometry
+                        const planetGeometry = new THREE.BufferGeometry();
+                        planetGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        planetGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                        planetGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        planetGeometry.setIndex(indices);
+
+                        planetGeometry.computeBoundingSphere();
+
+                        // Create modern material (without deprecated 'ambient' property)
+                        const planetMaterial = new THREE.MeshLambertMaterial({
+                            vertexColors: true  // Modern Three.js uses boolean, not THREE.VertexColors
+                        });
+
+                        const planetRenderObject = new THREE.Mesh(planetGeometry, planetMaterial);
+
+                        action.provideResult({
+                            geometry: planetGeometry,
+                            terrainColors: terrainColors,
+                            plateColors: plateColors,
+                            elevationColors: elevationColors,
+                            temperatureColors: temperatureColors,
+                            moistureColors: moistureColors,
+                            object: planetRenderObject
+                        });
+                    };
+                }
+
+                // 4. Override buildPlateBoundariesRenderObject with modern BufferGeometry
+                if (typeof buildPlateBoundariesRenderObject !== 'undefined') {
+                    window.buildPlateBoundariesRenderObject = function(borders, action) {
+                        console.log('Using modern BufferGeometry for plate boundaries');
+
+                        const vertices = [];
+                        const colors = [];
+
+                        let i = 0;
+                        action.executeSubaction(function(action) {
+                            if (i >= borders.length) return;
+
+                            const border = borders[i];
+
+                            // Add line vertices
+                            vertices.push(border.corners[0].position.x, border.corners[0].position.y, border.corners[0].position.z);
+                            vertices.push(border.corners[1].position.x, border.corners[1].position.y, border.corners[1].position.z);
+
+                            // Add colors (white lines for plate boundaries)
+                            colors.push(1, 1, 1, 1, 1, 1);
+
+                            ++i;
+                            action.loop(i / borders.length);
+                        });
+
+                        const geometry = new THREE.BufferGeometry();
+                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+                        const material = new THREE.LineBasicMaterial({ vertexColors: true });
+                        const object = new THREE.LineSegments(geometry, material);
+
+                        action.provideResult(object);
+                    };
+                }
+
+                // 5. Override buildPlateMovementsRenderObject with modern BufferGeometry
+                if (typeof buildPlateMovementsRenderObject !== 'undefined') {
+                    window.buildPlateMovementsRenderObject = function(tiles, action) {
+                        console.log('Using modern BufferGeometry for plate movements');
+
+                        const vertices = [];
+                        const colors = [];
+
+                        let i = 0;
+                        action.executeSubaction(function(action) {
+                            if (i >= tiles.length) return;
+
+                            const tile = tiles[i];
+
+                            if (tile.plateMovement && tile.plateMovement.length() > 0.01) {
+                                const start = tile.averagePosition;
+                                const end = start.clone().add(tile.plateMovement.clone().multiplyScalar(10));
+
+                                vertices.push(start.x, start.y, start.z);
+                                vertices.push(end.x, end.y, end.z);
+
+                                // Color based on movement speed
+                                const speed = tile.plateMovement.length();
+                                colors.push(speed, 0, 1 - speed, speed, 0, 1 - speed);
+                            }
+
+                            ++i;
+                            action.loop(i / tiles.length);
+                        });
+
+                        const geometry = new THREE.BufferGeometry();
+                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+                        const material = new THREE.LineBasicMaterial({ vertexColors: true });
+                        const object = new THREE.LineSegments(geometry, material);
+
+                        action.provideResult(object);
+                    };
+                }
+
+                // 6. Override buildAirCurrentsRenderObject with modern BufferGeometry
+                if (typeof buildAirCurrentsRenderObject !== 'undefined') {
+                    window.buildAirCurrentsRenderObject = function(corners, action) {
+                        console.log('Using modern BufferGeometry for air currents');
+
+                        const vertices = [];
+                        const colors = [];
+
+                        let i = 0;
+                        action.executeSubaction(function(action) {
+                            if (i >= corners.length) return;
+
+                            const corner = corners[i];
+
+                            if (corner.airCurrent && corner.airCurrent.length() > 0.01) {
+                                const start = corner.position;
+                                const end = start.clone().add(corner.airCurrent.clone().multiplyScalar(5));
+
+                                vertices.push(start.x, start.y, start.z);
+                                vertices.push(end.x, end.y, end.z);
+
+                                // Blue color for air currents
+                                colors.push(0, 0.5, 1, 0, 0.5, 1);
+                            }
+
+                            ++i;
+                            action.loop(i / corners.length);
+                        });
+
+                        const geometry = new THREE.BufferGeometry();
+                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+                        const material = new THREE.LineBasicMaterial({ vertexColors: true });
+                        const object = new THREE.LineSegments(geometry, material);
+
+                        action.provideResult(object);
+                    };
+                }
+
+                // 7. Override selectTile function with modern BufferGeometry
+                if (typeof selectTile !== 'undefined') {
+                    const originalSelectTile = window.selectTile;
+                    window.selectTile = function(tile) {
+                        if (tileSelection !== null) {
+                            if (tileSelection.tile === tile) return;
+                            deselectTile();
+                        }
+
+                        console.log(tile);
+
+                        const outerColor = new THREE.Color(0x000000);
+                        const innerColor = new THREE.Color(0xFFFFFF);
+
+                        // Create modern BufferGeometry for tile selection
+                        const vertices = [];
+                        const colors = [];
+                        const indices = [];
+
+                        // Add center vertex
+                        vertices.push(tile.averagePosition.x, tile.averagePosition.y, tile.averagePosition.z);
+                        colors.push(innerColor.r, innerColor.g, innerColor.b);
+
+                        // Add corner vertices
+                        for (let i = 0; i < tile.corners.length; i++) {
+                            const corner = tile.corners[i].position;
+                            vertices.push(corner.x, corner.y, corner.z);
+                            colors.push(outerColor.r, outerColor.g, outerColor.b);
+
+                            // Create triangle indices (center, current corner, next corner)
+                            const nextIndex = (i + 1) % tile.corners.length + 1;
+                            indices.push(0, i + 1, nextIndex);
+                        }
+
+                        const geometry = new THREE.BufferGeometry();
+                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        geometry.setIndex(indices);
+                        geometry.computeBoundingSphere();
+
+                        const material = new THREE.MeshLambertMaterial({
+                            vertexColors: true,
+                            transparent: true,
+                            opacity: 0.5,
+                            polygonOffset: true,
+                            polygonOffsetFactor: -2,
+                            polygonOffsetUnits: -2
+                        });
+
+                        const object = new THREE.Mesh(geometry, material);
+                        scene.add(object);
+
+                        tileSelection = {
+                            tile: tile,
+                            object: object
+                        };
+                    };
+                }
+
+                // 8. Override helper functions that use THREE.Face3
+                window.buildArrow = function(geometry, position, direction, normal, baseWidth, color) {
+                    // Modern implementation would be part of BufferGeometry building
+                    // This is a stub since we've modernized the calling functions
+                    console.log('buildArrow called (modernized version handles this in BufferGeometry)');
+                };
+
+                window.buildTileWedge = function(f, b, s, t, n) {
+                    // Modern implementation would be part of BufferGeometry building
+                    // This is a stub since we've modernized the calling functions
+                    console.log('buildTileWedge called (modernized version handles this in BufferGeometry)');
+                };
+
+                window.buildTileWedgeColors = function(f, c, bc) {
+                    // Modern implementation would be part of BufferGeometry building
+                    // This is a stub since we've modernized the calling functions
+                    console.log('buildTileWedgeColors called (modernized version handles this in BufferGeometry)');
+                };
+
+                console.log('Modern Three.js overrides applied');
+            }, 500); // Wait a bit longer for proto.js to fully load
+        });
+    </script>
+
+    <!-- Include the proto.js planet generation -->
+    <script src="proto.js"></script>
+
+    <!-- Enhanced UI Integration -->
+    <script>
+        // Enhanced UI variables
+        let debugMode = false;
+        let hoveredTile = null;
+
+        // Initialize enhanced UI after proto.js loads
+        $(document).ready(function() {
+            initializeEnhancedUI();
+
+            // Add tile highlighting functionality
+            addTileHighlighting();
+
+            // Generate initial planet
+            setTimeout(() => {
+                if (typeof generatePlanetAsynchronous === 'function') {
+                    generatePlanetAsynchronous();
+                }
+            }, 1000);
+        });
+
+        function initializeEnhancedUI() {
+            // Rendering mode buttons
+            $('#terrainButton').click(() => setRenderingMode('terrain'));
+            $('#plateButton').click(() => setRenderingMode('plates'));
+            $('#temperatureButton').click(() => setRenderingMode('temperature'));
+            $('#moistureButton').click(() => setRenderingMode('moisture'));
+
+            // Control buttons
+            $('#generateButton').click(() => {
+                // Trigger the hidden proto.js button
+                $('#generatePlanetButton').trigger('click');
+            });
+
+            $('#advancedButton').click(() => {
+                $('#generationSettingsPanel').show();
+            });
+
+            $('#sunlightButton').click(toggleSunlight);
+            $('#debugModeButton').click(toggleDebugMode);
+
+            // Sliders
+            $('#detailRange').on('input', function() {
+                const value = parseInt(this.value);
+                const labels = ['Low', 'Medium', 'High'];
+                $('#detailValue').text(labels[value]);
+
+                // Trigger appropriate detail button
+                const buttons = ['#lowDetailButton', '#mediumDetailButton', '#highDetailButton'];
+                $(buttons[value]).trigger('click');
+            });
+
+            $('#sunTimeRange').on('input', function() {
+                const value = parseInt(this.value);
+                $('#sunTimeValue').text(value);
+
+                // Update sun time in proto.js
+                if (typeof sunTimeOffset !== 'undefined') {
+                    sunTimeOffset = value;
+                }
+            });
+
+            $('#zoomRange').on('input', function() {
+                const value = parseFloat(this.value);
+                $('#zoomValue').text(value.toFixed(1));
+
+                // Update zoom in proto.js
+                if (typeof zoom !== 'undefined') {
+                    zoom = value;
+                    if (typeof updateCamera === 'function') {
+                        updateCamera();
+                    }
+                }
+            });
+        }
+
+        function setRenderingMode(mode) {
+            // Update button states
+            $('.ui button').removeClass('active');
+            $(`#${mode}Button`).addClass('active');
+
+            // Set rendering mode in proto.js
+            if (typeof setSurfaceRenderMode === 'function') {
+                const modeMap = {
+                    'terrain': 'terrain',
+                    'plates': 'plates',
+                    'temperature': 'temperature',
+                    'moisture': 'moisture'
+                };
+                setSurfaceRenderMode(modeMap[mode]);
+            }
+        }
+
+        function toggleSunlight() {
+            const isOn = $('#sunlightButton').text().includes('On');
+            const newState = !isOn;
+            $('#sunlightButton').text(`Sunlight: ${newState ? 'On' : 'Off'}`);
+            $('#sunlightButton').toggleClass('active', newState);
+
+            if (typeof showHideSunlight === 'function') {
+                showHideSunlight(newState);
+            }
+        }
+
+        function toggleDebugMode() {
+            debugMode = !debugMode;
+            $('#debugModeButton').text(`Debug Mode: ${debugMode ? 'On' : 'Off'}`);
+            $('#debugModeButton').toggleClass('active', debugMode);
+            $('#debug-overlay').toggle(debugMode);
+        }
+
+        function addTileHighlighting() {
+            // Add mouse interaction for tile highlighting
+            $(document).mousemove(function(event) {
+                if (!debugMode || !planet) return;
+
+                // This would need to be implemented with proper raycasting
+                // For now, just show placeholder debug info
+                if (debugMode) {
+                    $('#debug-content').html(`
+                        <strong>Tile Debug Info</strong><br>
+                        Mouse: ${event.clientX}, ${event.clientY}<br>
+                        Planet: ${planet ? 'Loaded' : 'Not loaded'}<br>
+                        Triangles: ${planet && planet.topology ? planet.topology.triangles.length : 0}
+                    `);
+                }
+            });
+        }
+
+        // Progress update function for proto.js
+        function updateProgressUI(action) {
+            if (action && action.getDescription) {
+                $('#progressText').text(action.getDescription());
+            }
+        }
+
+        // Resize handler
+        function resizeHandler() {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+
+        // Add resize listener
+        window.addEventListener('resize', resizeHandler);
+    </script>
+</body>
+</html>

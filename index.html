@@ -3,182 +3,3416 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Colourducation - Color Learning Game</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Hex Planet - Dual Geodesic Wireframe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            overflow: hidden; 
+            background: radial-gradient(ellipse at 50% 50%, #001a35 0%, #00050a 100%);
+            font-family: 'Inter', sans-serif;
+            color: #eee;
+        }
+        canvas { display: block; }
+        .tab-button { 
+            transition: all 0.3s ease; 
+            border-radius: 3px 3px 0 0;
+        }
+        .tab-button.active { 
+            background: #4CAF50 !important; 
+            color: white !important; 
+        }
+        .tab-content { 
+            display: block; 
+        }
+        .tab-content.hidden { 
+            display: none; 
+        }
+        .info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #cce7ff; 
+            font-family: 'Inter', sans-serif; 
+            pointer-events: none; 
+            font-size: 16px;
+        }
+        .ui {
+            position: absolute; 
+            left: 16px; 
+            bottom: 16px; 
+            z-index: 10;
+            background: rgba(0, 25, 50, 0.2);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #cce7ff; 
+            padding: 12px 14px;
+            font-family: 'Inter', sans-serif; 
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        .ui label { 
+            font-size: 12px; 
+            color: #b3d9ff; 
+            display: block; 
+            margin-bottom: 6px; 
+        }
+        .ui input[type=range] { 
+            width: 240px;
+            accent-color: #4FC3F7;
+        }
+        .ui button {
+            background: rgba(79, 195, 247, 0.2);
+            border: 1px solid rgba(79, 195, 247, 0.4);
+            color: #cce7ff;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .ui button:hover {
+            background: rgba(79, 195, 247, 0.3);
+            border-color: rgba(79, 195, 247, 0.6);
+        }
+        .value { 
+            font-weight: 700; 
+            color: #fff;
+        }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <!-- Main Menu -->
-        <div id="main-menu" class="screen active">
-            <div class="container">
-                <h1 class="title">Colourducation</h1>
-                <p class="subtitle">Learn colors through fun games!</p>
-                
-                <div class="game-modes">
-                    <button class="game-mode-btn" data-mode="math-colors">
-                        <div class="mode-icon">🔢</div>
-                        <h3>Math Colors</h3>
-                        <p>Paint by numbers using simple math!</p>
-                    </button>
-                    
-                    <button class="game-mode-btn" data-mode="color-by-number">
-                        <div class="mode-icon">🎨</div>
-                        <h3>Color by Number</h3>
-                        <p>Classic numbered coloring for kids.</p>
-                    </button>
-
-                    <button class="game-mode-btn" data-mode="hex-planet">
-                        <div class="mode-icon">🪐</div>
-                        <h3>Hex Planet</h3>
-                        <p>Build on a cute hex‑grid planet.</p>
-                    </button>
-                    
-                    <button class="game-mode-btn" data-mode="word-categories">
-                        <div class="mode-icon">📝</div>
-                        <h3>Word Categories</h3>
-                        <p>Color words by their categories!</p>
-                    </button>
-                </div>
-                
-                <button id="fullscreen-btn" class="fullscreen-btn">🖥️ Fullscreen</button>
-            </div>
+    <div class="info">Drag to Rotate, Scroll to Zoom</div>
+    
+    <!-- Debug Info Overlay -->
+    <div id="debug-overlay" style="
+        position: absolute;
+        top: 50px;
+        right: 20px;
+        background: rgba(0, 25, 50, 0.9);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #cce7ff;
+        padding: 15px;
+        font-family: 'Inter', sans-serif;
+        font-size: 12px;
+        line-height: 1.4;
+        min-width: 200px;
+        display: none;
+        z-index: 100;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    ">
+        <div style="font-weight: bold; margin-bottom: 8px; color: #fff;">Tile Debug Info</div>
+        <div id="debug-content"></div>
+    </div>
+    <div class="ui">
+        <!-- Tab Navigation -->
+        <div style="display: flex; margin-bottom: 10px; border-bottom: 1px solid #ccc;">
+            <button id="tab-terrain" class="tab-button active" style="flex: 1; padding: 5px; border: none; background: #4CAF50; color: white; cursor: pointer;">Terrain</button>
+            <button id="tab-effects" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Effects</button>
+            <button id="tab-water" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Water</button>
+            <button id="tab-land" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Land</button>
+            <button id="tab-mountain" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Mountain</button>
+            <button id="tab-controls" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Controls</button>
         </div>
-
-        <!-- Math Colors Game -->
-        <div id="math-colors-game" class="screen">
-            <div class="game-header">
-                <button class="back-btn" onclick="showMainMenu()">← Back</button>
-                <h2 id="paint-title">Math Colors - Paint by Numbers</h2>
-                <div class="score">Score: <span id="math-score">0</span></div>
+        
+        <!-- Terrain Tab -->
+        <div id="tab-terrain-content" class="tab-content">
+        <label>Tile density (detail): <span class="value" id="detailValue">15</span></label>
+        <input type="range" id="detail" min="0" max="20" step="1" value="15" />
+            <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">6</span></label>
+            <input type="range" id="continents" min="3" max="24" step="1" value="6" />
+        <label style="margin-top:10px">Sea level: <span class="value" id="seaValue">0.80</span></label>
+        <input type="range" id="sea" min="0" max="1" step="0.01" value="0.8" />
+            <label style="margin-top:10px">Noise: <span class="value" id="noiseValue">0.25</span></label>
+            <input type="range" id="noise" min="0" max="3" step="0.05" value="0.25" />
+        <label style="margin-top:10px">Mountain Ridges: <span class="value" id="ridgesValue">0.3</span></label>
+        <input type="range" id="ridges" min="0" max="1" step="0.05" value="0.3" />
+        </div>
+        
+        <!-- Effects Tab -->
+        <div id="tab-effects-content" class="tab-content" style="display: none;">
+            <label>Cloud Density: <span class="value" id="cloudDensityValue">0.35</span></label>
+        <input type="range" id="cloudDensity" min="0" max="1" step="0.05" value="0.35" />
+        <label style="margin-top:10px">Cloud Opacity: <span class="value" id="cloudOpacityValue">0.05</span></label>
+        <input type="range" id="cloudOpacity" min="0" max="1" step="0.05" value="0.05" />
+            <label style="margin-top:10px">Snow Intensity: <span class="value" id="snowIntensityValue">0.0</span></label>
+            <input type="range" id="snowIntensity" min="0" max="1" step="0.1" value="0.0" />
+            <label style="margin-top:10px">Snow Speed: <span class="value" id="snowSpeedValue">0.1</span></label>
+            <input type="range" id="snowSpeed" min="0.1" max="3" step="0.1" value="0.1" />
+        </div>
+        
+        <!-- Water Tab -->
+        <div id="tab-water-content" class="tab-content" style="display: none;">
+            <div style="margin-bottom:15px; padding:10px; background:rgba(0,150,255,0.1); border-radius:5px; border:1px solid rgba(0,150,255,0.3);">
+                <div style="font-weight:bold; color:#0066cc; margin-bottom:10px;">🌊 Advanced Water Shader</div>
+                <label>Big Wave Height: <span class="value" id="bigWaveHeightValue">0.15</span></label>
+                <input type="range" id="bigWaveHeight" min="0" max="1" step="0.01" value="0.15" />
+                <label style="margin-top:10px">Big Wave Speed: <span class="value" id="bigWaveSpeedValue">0.75</span></label>
+                <input type="range" id="bigWaveSpeed" min="0" max="2" step="0.01" value="0.75" />
+                <label style="margin-top:10px">Small Wave Height: <span class="value" id="smallWaveHeightValue">0.05</span></label>
+                <input type="range" id="smallWaveHeight" min="0" max="0.2" step="0.01" value="0.05" />
+                <label style="margin-top:10px">Small Wave Speed: <span class="value" id="smallWaveSpeedValue">0.2</span></label>
+                <input type="range" id="smallWaveSpeed" min="0" max="1" step="0.01" value="0.2" />
+                <label style="margin-top:10px">Small Wave Iterations: <span class="value" id="smallWaveIterationsValue">4</span></label>
+                <input type="range" id="smallWaveIterations" min="1" max="8" step="1" value="4" />
             </div>
             
-            <div class="game-container">
-                <div class="color-legend">
-                    <h3>Color Key:</h3>
-                    <div class="legend-items" id="math-legend"></div>
-                </div>
-                
-                <div class="paint-canvas">
-                    <div class="picture-container" id="picture-container">
-                        <svg class="picture-svg" viewBox="0 0 480 320" xmlns="http://www.w3.org/2000/svg" aria-labelledby="svgTitle svgDesc" role="img">
-                            <title id="svgTitle">Paint by Numbers - Car</title>
-                            <desc id="svgDesc">A simple vector car split into regions labeled with math problems.</desc>
-                            <!-- Ground -->
-                            <rect x="0" y="250" width="480" height="70" fill="#f2f2f2" />
-
-                            <!-- Car body (three regions that should be 4=Green) -->
-                            <path id="region-1" class="paint-region" data-answer="4" d="M70 180 H210 Q230 180 240 200 L240 230 H70 Z" />
-                            <path id="region-2" class="paint-region" data-answer="4" d="M240 200 Q260 180 330 180 H410 V230 H240 Z" />
-                            <path id="region-3" class="paint-region" data-answer="4" d="M70 230 H410 V245 H70 Z" />
-
-                            <!-- Roof (5=Yellow) -->
-                            <path id="region-4" class="paint-region" data-answer="5" d="M140 160 L200 130 H300 L340 160 Z" />
-
-                            <!-- Windows (5=Yellow) -->
-                            <rect id="region-7" class="paint-region" data-answer="5" x="160" y="150" width="70" height="25" rx="6" />
-                            <rect id="region-8" class="paint-region" data-answer="5" x="240" y="150" width="70" height="25" rx="6" />
-
-                            <!-- Wheels (2=Teal) -->
-                            <circle id="region-5" class="paint-region" data-answer="2" cx="140" cy="250" r="28" />
-                            <circle id="region-6" class="paint-region" data-answer="2" cx="340" cy="250" r="28" />
-
-                            <!-- Headlights (1=Red) -->
-                            <rect id="region-9" class="paint-region" data-answer="1" x="60" y="205" width="18" height="12" rx="3" />
-                            <rect id="region-10" class="paint-region" data-answer="1" x="60" y="220" width="18" height="12" rx="3" />
-
-                            <!-- Bumper (6=Purple) -->
-                            <rect id="region-11" class="paint-region" data-answer="6" x="415" y="205" width="28" height="20" rx="4" />
-
-                            <!-- Door handle (3=Blue) and mirror (3=Blue) and plate (6=Purple) -->
-                            <rect id="region-12" class="paint-region" data-answer="3" x="245" y="195" width="16" height="10" rx="2" />
-                            <rect id="region-13" class="paint-region" data-answer="3" x="120" y="165" width="14" height="10" rx="2" />
-                            <rect id="region-14" class="paint-region" data-answer="6" x="420" y="220" width="20" height="10" rx="2" />
-
-                            <!-- Problem labels -->
-                            <g id="region-labels" class="region-labels">
-                                <text class="region-label" x="120" y="210">2+2</text>
-                                <text class="region-label" x="300" y="205">1+3</text>
-                                <text class="region-label" x="200" y="240">3+1</text>
-                                <text class="region-label" x="240" y="150">2+3</text>
-                                <text class="region-label" x="185" y="168">3+2</text>
-                                <text class="region-label" x="265" y="168">2+3</text>
-                                <text class="region-label" x="138" y="253">1+1</text>
-                                <text class="region-label" x="338" y="253">1+1</text>
-                                <text class="region-label" x="66" y="214">1+0</text>
-                                <text class="region-label" x="66" y="229">0+1</text>
-                                <text class="region-label" x="420" y="218">2+4</text>
-                                <text class="region-label" x="246" y="203">1+2</text>
-                                <text class="region-label" x="122" y="173">2+1</text>
-                                <text class="region-label" x="423" y="228">3+3</text>
-                            </g>
-                        </svg>
-                    </div>
-                </div>
-                
-                <div class="game-controls">
-                    <div class="color-picker">
-                        <h3>Select Color:</h3>
-                        <div class="color-options" id="color-picker"></div>
-                    </div>
-                    <div class="instructions">
-                        <p>Click on a section to paint it with the selected color!</p>
-                        <p>
-                            <button id="toggle-labels" class="option-btn" style="margin-top:10px">Numbers: On</button>
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Word Categories Game -->
-        <div id="word-categories-game" class="screen">
-            <div class="game-header">
-                <button class="back-btn" onclick="showMainMenu()">← Back</button>
-                <h2>Word Categories</h2>
-                <div class="score">Score: <span id="word-score">0</span></div>
+            <div style="margin-bottom:15px; padding:10px; background:rgba(0,100,200,0.1); border-radius:5px; border:1px solid rgba(0,100,200,0.3);">
+                <div style="font-weight:bold; color:#004499; margin-bottom:10px;">🎨 Water Colors</div>
+                <label>Depth Color: <input type="color" id="depthColor" value="#0b214a" style="margin-left:10px;" /></label>
+                <label style="margin-top:10px; display:block;">Surface Color: <input type="color" id="surfaceColor" value="#2e89ff" style="margin-left:10px;" /></label>
+                <label style="margin-top:10px; display:block;">Foam Color: <input type="color" id="foamColor" value="#ffffff" style="margin-left:10px;" /></label>
             </div>
             
-            <div class="game-container">
-                <div class="color-legend">
-                    <h3>Category Colors:</h3>
-                    <div class="legend-items" id="word-legend"></div>
-                </div>
-                
-                <div class="word-grid">
-                    <div class="words-container" id="word-container"></div>
-                </div>
-                
-                <div class="game-controls">
-                    <div class="current-word">
-                        <h3>Select the category for: <span id="current-word-text"></span></h3>
-                        <div class="category-options" id="category-options"></div>
-                    </div>
-                </div>
+            <div style="margin-bottom:15px; padding:10px; background:rgba(0,200,255,0.1); border-radius:5px; border:1px solid rgba(0,200,255,0.3);">
+                <div style="font-weight:bold; color:#0066aa; margin-bottom:10px;">✨ Water Effects</div>
+                <label>Color Offset: <span class="value" id="colorOffsetValue">0.08</span></label>
+                <input type="range" id="colorOffset" min="0" max="0.2" step="0.01" value="0.08" />
+                <label style="margin-top:10px">Color Multiplier: <span class="value" id="colorMultiplierValue">5.0</span></label>
+                <input type="range" id="colorMultiplier" min="1" max="10" step="0.1" value="5.0" />
+                <label style="margin-top:10px">Shininess: <span class="value" id="waterShininessValue">100</span></label>
+                <input type="range" id="waterShininess" min="10" max="500" step="1" value="100" />
             </div>
         </div>
-
-        <!-- Hex Planet Game -->
-        <div id="hex-planet-game" class="screen">
-            <div class="game-header">
-                <button class="back-btn" onclick="showMainMenu()">← Back</button>
-                <h2>Hex Planet</h2>
-                <div class="score">Items: <span id="hex-item-count">0</span></div>
+        
+        <!-- Land Tab -->
+        <div id="tab-land-content" class="tab-content" style="display: none;">
+            <div style="margin-bottom:15px; padding:10px; background:rgba(34,139,34,0.1); border-radius:5px; border:1px solid rgba(34,139,34,0.3);">
+                <div style="font-weight:bold; color:#228b22; margin-bottom:10px;">🌿 Land Shader</div>
+                <label>Elevation: <span class="value" id="landElevationValue">0.1</span></label>
+                <input type="range" id="landElevation" min="0" max="0.5" step="0.01" value="0.1" />
             </div>
-            <div class="hex-planet-wrapper">
-                <canvas id="hex-canvas"></canvas>
-                <div class="hex-ui">
-                    <div class="palette">
-                        <button class="palette-item" data-item="tree">🌳</button>
-                        <button class="palette-item" data-item="house">🏠</button>
-                        <button class="palette-item" data-item="car">🚗</button>
-                        <button class="palette-item" data-item="flag">🚩</button>
-                        <button id="hex-clear" class="palette-item">🧹</button>
-                    </div>
-                </div>
+            
+            <div style="margin-bottom:15px; padding:10px; background:rgba(139,69,19,0.1); border-radius:5px; border:1px solid rgba(139,69,19,0.3);">
+                <div style="font-weight:bold; color:#8b4513; margin-bottom:10px;">🎨 Land Colors</div>
+                <label>Sand Color: <input type="color" id="sandColor" value="#c2b280" style="margin-left:10px;" /></label>
+                <label style="margin-top:10px; display:block;">Grass Color: <input type="color" id="grassColor" value="#559033" style="margin-left:10px;" /></label>
+                <label style="margin-top:10px; display:block;">Wet Sand Color: <input type="color" id="wetSandColor" value="#a18f6b" style="margin-left:10px;" /></label>
             </div>
+        </div>
+        
+        
+        <!-- Mountain Tab -->
+        <div id="tab-mountain-content" class="tab-content" style="display: none;">
+            <div style="margin-bottom:15px; padding:10px; background:rgba(139,69,19,0.1); border-radius:5px; border:1px solid rgba(139,69,19,0.3);">
+                <div style="font-weight:bold; color:#8b4513; margin-bottom:10px;">🏔️ Mountain Shader</div>
+                <label>Elevation Scale: <span class="value" id="mountainElevationValue">1.5</span></label>
+                <input type="range" id="mountainElevation" min="0.1" max="3.0" step="0.1" value="1.5" />
+                <label style="margin-top:10px">Snow Level: <span class="value" id="snowLevelValue">0.8</span></label>
+                <input type="range" id="snowLevel" min="0.1" max="2.0" step="0.05" value="0.8" />
+            </div>
+            
+            <div style="margin-bottom:15px; padding:10px; background:rgba(60,60,60,0.1); border-radius:5px; border:1px solid rgba(60,60,60,0.3);">
+                <div style="font-weight:bold; color:#3c3c3c; margin-bottom:10px;">🎨 Mountain Colors</div>
+                <label>Dark Rock: <input type="color" id="darkRockColor" value="#3c3c3c" style="margin-left:10px;" /></label>
+                <label style="margin-top:10px; display:block;">Light Rock: <input type="color" id="lightRockColor" value="#8c8c8c" style="margin-left:10px;" /></label>
+                <label style="margin-top:10px; display:block;">Snow Color: <input type="color" id="snowColor" value="#ffffff" style="margin-left:10px;" /></label>
+            </div>
+        </div>
+        
+        <!-- Controls Tab -->
+        <div id="tab-controls-content" class="tab-content" style="display: none;">
+            <label>Tree Density: <span class="value" id="treeDensityValue">0.35</span></label>
+            <input type="range" id="treeDensity" min="0" max="1" step="0.05" value="0.35" />
+        <label style="margin-top:10px">Tree Scale: <span class="value" id="treeScaleValue">1.0</span></label>
+        <input type="range" id="treeScale" min="0.2" max="2" step="0.1" value="1.0" />
+        <label style="margin-top:10px">Trees per Tile: <span class="value" id="treesPerTileValue">5</span></label>
+        <input type="range" id="treesPerTile" min="1" max="8" step="1" value="5" />
+        <label style="margin-top:10px">Tree Spacing: <span class="value" id="treeSpacingValue">0.4</span></label>
+        <input type="range" id="treeSpacing" min="0.1" max="1.5" step="0.1" value="0.4" />
+            <label style="margin-top:10px">Light Orbit Speed: <span class="value" id="lightSpeedValue">0.3</span></label>
+            <input type="range" id="lightSpeed" min="0" max="3" step="0.1" value="0.3" />
+            <label style="margin-top:10px">Outline Alpha: <span class="value" id="alphaValue">0.05</span></label>
+            <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.05" />
+        </div>
+        
+        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+            <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
+            <button id="debug-toggle" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Debug: Off</button>
+            <button id="shader-toggle" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Shaders: On</button>
+        </div>
+        <div style="margin-top:10px;">
+            <span id="seedLbl" class="value"></span>
+        </div>
+        <div style="margin-top:10px;">
+            <span class="value" id="zoomInfo">Zoom: 30</span>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Three.js and controls (non-module for easy file:// usage) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    
+    <!-- Snow Shader Scripts -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        void main() {
+            gl_Position = vec4( position, 1.0 );
+        }
+    </script>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+        uniform float u_time;
+        uniform sampler2D u_noise;
+        uniform float u_snowIntensity;
+        uniform float u_snowSpeed;
+        
+        #define PI 3.141592653589793
+        #define TAU 6.
+        
+        const float multiplier = 25.5;
+        const float zoomSpeed = 10.;
+        const int layers = 10;
+        const int octaves = 5;
+
+        vec2 hash2(vec2 p) {
+            vec2 o = texture2D( u_noise, (p+0.5)/256.0, -100.0 ).xy;
+            return o;
+        }
+        
+        mat2 rotate2d(float _angle){
+            return mat2(cos(_angle),sin(_angle),
+                        -sin(_angle),cos(_angle));
+        }
+        
+        vec3 hsb2rgb( in vec3 c ){
+            vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),
+                                     6.0)-3.0)-1.0,
+                             0.0,
+                             1.0 );
+            rgb = rgb*rgb*(3.0-2.0*rgb);
+            return c.z * mix( vec3(1.0), rgb, c.y);
+        }
+        
+        float hash(vec2 p) {
+            float o = texture2D( u_noise, (p+0.5)/256.0, -100.0 ).x;
+            return o;
+        }
+        
+        float noise(vec2 uv) {
+            vec2 id = floor(uv);
+            vec2 subuv = fract(uv);
+            vec2 u = subuv * subuv * (3. - 2. * subuv);
+            float a = hash(id);
+            float b = hash(id + vec2(1., 0.));
+            float c = hash(id + vec2(0., 1.));
+            float d = hash(id + vec2(1., 1.));
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+        
+        float fbm(in vec2 uv) {
+            float s = .0;
+            float m = .0;
+            float a = .5;
+            for(int i = 0; i < octaves; i++) {
+                s += a * noise(uv);
+                m += a;
+                a *= .5;
+                uv *= 2.;
+            }
+            return s / m;
+        }
+        
+        vec3 domain(vec2 z){
+            return vec3(hsb2rgb(vec3(atan(z.y,z.x)/TAU,1.,1.)));
+        }
+        
+        vec3 colour(vec2 z) {
+            return domain(z);
+        }
+        
+        // The render function is where we render the pattern to be added to the layer
+        vec3 render(vec2 uv, float scale, vec3 colour) {
+            vec2 id = floor(uv);
+            vec2 subuv = fract(uv);
+            vec2 rand = hash2(id);
+            float bokeh = abs(scale) * 1.;
+            
+            float particle = 0.;
+            
+            if(length(rand) > 1.3) {
+                vec2 pos = subuv-.5;
+                float field = length(pos);
+                particle = smoothstep(.3, 0., field);
+                particle += smoothstep(.4, 0.34 * bokeh, field);
+            }
+            return vec3(particle*2.);
+        }
+        
+        vec3 renderLayer(int layer, int layers, vec2 uv, inout float opacity, vec3 colour, float n) {
+            vec2 _uv = uv;
+            // Scale
+            // Generating a scale value between zero and 1 based on a mod of u_time
+            // A frequency of 10 dixided by the layer index (10 / layers * layer)
+            float scale = mod((u_time * u_snowSpeed + zoomSpeed / float(layers) * float(layer)) / zoomSpeed, -1.);
+            uv *= 20.; // The initial scale. Increasing this makes the cells smaller and the "speed" apepar faster
+            uv *= scale*scale; // then modifying the overall scale by the generated amount
+            // uv *= 1. + ( ( n*.5 ) * ( length(_uv) ) );
+            // uv += .5*float(layer);
+            uv = rotate2d(u_time * u_snowSpeed / 10.) * uv; // rotarting
+            uv += vec2(25. + sin(u_time * u_snowSpeed * .1)) * float(layer); // ofsetting the UV by an arbitrary amount to make the layer appear different
+
+            // render
+            vec3 pass = render(uv * multiplier, scale, colour) * .2; // render the pass
+
+             // this is the opacity of the layer fading in from the "bottom"
+            opacity = 1. + scale;
+            float _opacity = opacity;
+            
+            // pass += n * .5 * mix(vec3(0., .5, 1.5), vec3(1., .5, 0.), opacity);
+            
+            // This is the opacity of the layer fading out at the top (we want this minimal, hence the smoothstep)
+            float endOpacity = smoothstep(0., 0.4, scale * -1.);
+            opacity += endOpacity;
+
+            return pass * _opacity * endOpacity * u_snowIntensity;
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy);
+
+            if(u_resolution.y < u_resolution.x) {
+                uv /= u_resolution.y;
+            } else {
+                uv /= u_resolution.x;
+            }
+
+            // uv.y += cos(u_time * .1) * .5;
+            // uv.x += sin(u_time * .1) * .5;
+          
+            // float n = fbm(uv * 3. - 2.);
+            float n = fbm((uv + vec2(sin(u_time * u_snowSpeed * .1), u_time * u_snowSpeed * .1)) * 2. - 2.);
+
+            vec3 colour = vec3(0.);
+            // colour = n * mix(vec3(0., .5, 1.5), vec3(1., .5, -.1), n);
+            colour = n * mix(vec3(0., .5, 1.5), clamp(vec3(1., .5, .25)*2., 0., 1.), n);
+            // colour -= n*n*n*n*.4;
+            // colour += smoothstep(.8, 2.5, sin(n*n*n*8.))*.4;
+
+            float opacity = 1.;
+            float opacity_sum = 1.;
+
+            for(int i = 1; i <= layers; i++) {
+                colour += renderLayer(i, layers, uv, opacity, colour, n);
+                opacity_sum += opacity;
+            }
+
+            colour /= opacity_sum;
+
+            gl_FragColor = vec4(clamp(colour * 20., 0., 1.), u_snowIntensity);
+        }
+    </script>
+
+    <!-- Biome-specific shaders -->
+    <script id="landVertexShader" type="x-shader/x-vertex">
+        uniform float u_time;
+        uniform float u_elevation;
+
+        varying vec2 vUv;
+        varying vec3 v_normal;
+        varying vec3 v_world_position;
+        varying vec3 v_local_position;
+
+        // Simple noise function
+        float simple_noise(vec3 pos) {
+            return fract(sin(dot(pos, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        }
+
+        void main() {
+            vUv = uv;
+            v_local_position = position;
+            vec4 modelPos = modelMatrix * vec4(position, 1.0);
+
+            // Simple surface displacement
+            float noise = simple_noise(modelPos.xyz * 3.0) * 0.02;
+            float elevationDisplacement = u_elevation * 0.1 + noise;
+
+            // Apply displacement along surface normal
+            vec3 normal = normalize(position);
+            modelPos.xyz += normal * elevationDisplacement;
+
+            v_world_position = modelPos.xyz;
+            v_normal = normalMatrix * normal;
+
+            gl_Position = projectionMatrix * viewMatrix * modelPos;
+        }
+    </script>
+    
+    <script id="landFragmentShader" type="x-shader/x-fragment">
+        uniform float u_time;
+        uniform float u_elevation;
+        uniform float u_moisture;
+        uniform vec3 u_lightDirection;
+        uniform vec3 u_biomeColor;
+
+        varying vec2 vUv;
+        varying vec3 v_normal;
+        varying vec3 v_world_position;
+        varying vec3 v_local_position;
+
+        // Simple noise function
+        float simple_noise(vec2 uv) {
+            return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            // Use the biome color as the base
+            vec3 baseColor = u_biomeColor;
+
+            // Add subtle texture variation
+            float noise = simple_noise(vUv * 10.0);
+            baseColor = mix(baseColor * 0.8, baseColor * 1.2, noise);
+
+            // Simple elevation-based variation
+            float elevationFactor = clamp(u_elevation * 2.0, 0.0, 1.0);
+            vec3 highElevationColor = vec3(0.6, 0.5, 0.4); // Rocky color
+            baseColor = mix(baseColor, highElevationColor, elevationFactor * 0.3);
+
+            // Simple moisture-based variation
+            float moistureFactor = clamp(u_moisture, 0.0, 1.0);
+            vec3 wetColor = baseColor * 0.7; // Darker when wet
+            baseColor = mix(baseColor, wetColor, moistureFactor * 0.2);
+
+            // Simple lighting
+            vec3 lightDir = normalize(u_lightDirection);
+            vec3 normal = normalize(v_normal);
+            float diffuse = max(dot(normal, lightDir), 0.0) * 0.7 + 0.3;
+
+            // Apply lighting
+            vec3 finalColor = baseColor * diffuse;
+
+            // Ensure minimum visibility
+            finalColor = max(finalColor, baseColor * 0.3);
+
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    </script>
+    
+    <script id="waterVertexShader" type="x-shader/x-vertex">
+        uniform float u_time;
+        uniform float u_big_waves_elevation;
+        uniform float u_small_waves_elevation;
+
+        varying vec3 v_normal;
+        varying vec3 v_world_position;
+        varying float v_elevation;
+        varying vec3 v_local_position;
+        varying vec2 vUv;
+
+        // Simple noise function
+        float simple_noise(vec3 pos) {
+            return fract(sin(dot(pos, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        }
+
+        void main() {
+            vUv = uv;
+            v_local_position = position;
+            vec4 modelPos = modelMatrix * vec4(position, 1.0);
+
+            // Simple wave animation
+            float wave1 = sin(modelPos.x * 2.0 + u_time * 1.0) * cos(modelPos.z * 1.5 + u_time * 0.8);
+            float wave2 = simple_noise(modelPos.xyz * 3.0 + u_time * 0.5);
+
+            float waveHeight = (wave1 * u_big_waves_elevation + wave2 * u_small_waves_elevation) * 0.1;
+            v_elevation = waveHeight;
+
+            // Apply wave displacement along surface normal
+            vec3 normal = normalize(position);
+            modelPos.xyz += normal * waveHeight;
+
+            v_world_position = modelPos.xyz;
+            v_normal = normalMatrix * normal;
+
+            gl_Position = projectionMatrix * viewMatrix * modelPos;
+        }
+    </script>
+    
+    <script id="waterFragmentShader" type="x-shader/x-fragment">
+        uniform vec3 u_depth_color;
+        uniform vec3 u_surface_color;
+        uniform float u_time;
+        uniform vec3 u_lightDirection;
+        uniform vec3 u_cameraPosition;
+        uniform vec3 u_biomeColor;
+        uniform float u_big_waves_elevation;
+        uniform float u_big_waves_speed;
+        uniform float u_small_waves_elevation;
+        uniform float u_small_waves_speed;
+        uniform float u_color_offset;
+        uniform float u_color_multiplier;
+        uniform float u_shininess;
+        uniform vec3 u_foam_color;
+        uniform float u_distanceToLand;
+
+        varying vec3 v_normal;
+        varying vec3 v_world_position;
+        varying float v_elevation;
+        varying vec2 vUv;
+
+        // Simple noise function
+        float simple_noise(vec2 uv) {
+            return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            // Use depth and surface colors from sliders
+            vec3 deepWater = u_depth_color;
+            vec3 surfaceWater = u_surface_color;
+
+            // Very subtle, slow water variation - no aggressive flashing
+            float time = u_time * 0.1; // Much slower
+
+            // Use world position for consistent patterns across tiles
+            vec3 worldUV = v_world_position * 0.5;
+            float gentle_variation = simple_noise(worldUV.xy + time) * 0.05; // Very subtle
+
+            // Base water color with minimal variation
+            vec3 baseColor = mix(deepWater, surfaceWater, 0.5 + gentle_variation);
+
+            // Smooth lighting
+            vec3 lightDir = normalize(u_lightDirection);
+            vec3 normal = normalize(v_normal);
+            float diffuse = max(dot(normal, lightDir), 0.3) * 0.7 + 0.3;
+
+            // Controllable specular highlight
+            vec3 viewDir = normalize(u_cameraPosition - v_world_position);
+            vec3 halfDir = normalize(lightDir + viewDir);
+            float specular = pow(max(dot(normal, halfDir), 0.0), u_shininess) * 0.5;
+
+            // Apply lighting
+            vec3 finalColor = baseColor * diffuse + vec3(specular);
+
+            // Add very subtle, stable foam effect only for tiles very close to land
+            float foamDistance = clamp(u_distanceToLand, 0.0, 1.0);
+            if (foamDistance < 0.1) { // Only tiles immediately next to land
+                // Static foam pattern that doesn't flash
+                float foamPattern = simple_noise(v_world_position.xy * 10.0);
+                float edgeFoam = foamPattern * (1.0 - foamDistance * 10.0); // Fade with distance
+
+                // Very minimal foam (3% max)
+                finalColor = mix(finalColor, u_foam_color, edgeFoam * 0.03);
+            }
+
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    </script>
+    
+    
+    <script id="mountainVertexShader" type="x-shader/x-vertex">
+        uniform float u_time;
+        uniform float u_elevation_scale;
+        varying vec3 v_normal;
+        varying vec3 v_world_position;
+        varying vec3 v_local_position;
+        varying vec2 vUv;
+
+        // Classic Perlin 3D Noise by Stefan Gustavson
+        vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+        vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+        vec3 fade(vec3 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
+
+        float cnoise(vec3 P){
+          vec3 Pi0 = floor(P); vec3 Pi1 = Pi0 + vec3(1.0);
+          Pi0 = mod(Pi0, 289.0); Pi1 = mod(Pi1, 289.0);
+          vec3 Pf0 = fract(P); vec3 Pf1 = Pf0 - vec3(1.0);
+          vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+          vec4 iy = vec4(Pi0.yy, Pi1.yy);
+          vec4 iz0 = Pi0.zzzz; vec4 iz1 = Pi1.zzzz;
+          vec4 ixy = permute(permute(ix) + iy);
+          vec4 ixy0 = permute(ixy + iz0); vec4 ixy1 = permute(ixy + iz1);
+          vec4 gx0 = ixy0 / 7.0;
+          vec4 gy0 = fract(floor(gx0) / 7.0) - 0.5;
+          gx0 = fract(gx0);
+          vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+          vec4 sz0 = step(gz0, vec4(0.0));
+          gx0 -= sz0 * (step(0.0, gx0) - 0.5);
+          gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+          vec4 gx1 = ixy1 / 7.0;
+          vec4 gy1 = fract(floor(gx1) / 7.0) - 0.5;
+          gx1 = fract(gx1);
+          vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+          vec4 sz1 = step(gz1, vec4(0.0));
+          gx1 -= sz1 * (step(0.0, gx1) - 0.5);
+          gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+          vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+          vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+          vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+          vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+          vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+          vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+          vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+          vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+          vec3 fade_xyz = fade(Pf0);
+          vec4 n_z = mix(vec4(dot(g000, Pf0), dot(g100, vec3(Pf1.x, Pf0.yz)), dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z)), dot(g110, vec3(Pf1.xy, Pf0.z))), vec4(dot(g001, vec3(Pf0.x, Pf0.y, Pf1.z)), dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z)), dot(g011, vec3(Pf0.x, Pf1.y, Pf1.z)), dot(g111, Pf1)), fade_xyz.z);
+          float n_final = dot(mix(vec2(n_z.x, n_z.y), vec2(n_z.z, n_z.w), fade_xyz.x), vec2(1.0 - fade_xyz.y, fade_xyz.y));
+          return 2.2 * n_final;
+        }
+
+        void main() {
+            vUv = uv;
+            v_local_position = position;
+            vec4 modelPos = modelMatrix * vec4(position, 1.0);
+
+            // Convert to spherical coordinates for consistent mapping
+            float radius = length(modelPos.xyz);
+            float theta = atan(modelPos.z, modelPos.x);
+            float phi = acos(modelPos.y / radius);
+            vec2 sphericalUV = vec2(
+                theta / (2.0 * 3.14159) + 0.5,
+                phi / 3.14159
+            );
+            
+            // Rugged mountain terrain using spherical coordinates
+            float elevation = cnoise(vec3(sphericalUV * 3.0, u_time * 0.01)) * 0.6; // Base large forms
+            elevation += cnoise(vec3(sphericalUV * 8.0, u_time * 0.02)) * 0.25; // Medium details
+            elevation += cnoise(vec3(sphericalUV * 20.0, u_time * 0.03)) * 0.1; // Small rocks
+            
+            modelPos.y += elevation * u_elevation_scale;
+
+            v_world_position = modelPos.xyz;
+            v_normal = normalMatrix * normal;
+
+            gl_Position = projectionMatrix * viewMatrix * modelPos;
+        }
+    </script>
+    
+    <script id="mountainFragmentShader" type="x-shader/x-fragment">
+        uniform vec3 u_rock_color_dark;
+        uniform vec3 u_rock_color_light;
+        uniform vec3 u_snow_color;
+        uniform float u_snow_level;
+
+        varying vec3 v_normal;
+        varying vec3 v_world_position;
+        varying vec3 v_local_position;
+        varying vec2 vUv;
+
+        void main() {
+            // Default mountain colors
+            vec3 rock_color_dark = vec3(0.24, 0.24, 0.24);
+            vec3 rock_color_light = vec3(0.55, 0.55, 0.55);
+            vec3 snow_color = vec3(1.0, 1.0, 1.0);
+            float snow_level = 0.8;
+            
+            // Mix rock colors based on height
+            vec3 rock_color = mix(rock_color_dark, rock_color_light, smoothstep(0.1, 0.8, v_world_position.y));
+            
+            // Add snow cap
+            float snow_amount = smoothstep(snow_level - 0.1, snow_level + 0.1, v_world_position.y);
+            vec3 color = mix(rock_color, snow_color, snow_amount);
+            
+            // Lighting
+            vec3 light_direction = normalize(vec3(3.0, 4.0, 3.0));
+            float diffuse = max(dot(normalize(v_normal), light_direction), 0.0) * 0.7 + 0.3;
+            color *= diffuse;
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 0, 30);
+
+        // Nebula background variables
+        let stars, nebulaLayer1, nebulaLayer2, nebulaLayer3;
+        const starCount = 5000;
+        let nebulaAnimationTime = 0;
+
+        // Tree system variables
+        let trees = [];
+        let treeGroup = new THREE.Group();
+        let globalVertices = []; // Store vertices globally for tree generation
+        let forestVertices = []; // Store forest-suitable vertices
+        
+        // Snow system variables
+        let snowParticles = [];
+        let snowGroup = new THREE.Group();
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance"
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Better quality on high-DPI displays
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.08;
+        controls.minDistance = 10; // Minimum zoom distance
+        controls.maxDistance = 500; // Maximum zoom distance
+        
+        // Initialize nebula background
+        initializeNebulaBackground();
+        
+        // Add tree group to scene
+        scene.add(treeGroup);
+        
+        // Add snow group to scene
+        scene.add(snowGroup);
+        
+        // Update zoom display function
+        function updateZoomDisplay() {
+            const distance = camera.position.distanceTo(controls.target);
+            document.getElementById('zoomInfo').textContent = `Zoom: ${distance.toFixed(1)}`;
+        }
+        
+        // Update zoom display when controls change
+        controls.addEventListener('change', updateZoomDisplay);
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.35); scene.add(ambient);
+        
+        // Create orbiting directional light
+        const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+        scene.add(dir);
+        
+        // Light orbit variables
+        let lightOrbitRadius = 25;
+        let lightOrbitSpeed = 0.01;
+        let lightOrbitAngle = 0;
+
+        const radius = 15;
+        let solidSphere = null;
+        let wireframe = null;
+        let tileGroup = null; // holds colored tiles
+        let cloudSphere = null; // holds the cloud layer
+        let lastDetail = 15;
+        let cloudAnimationTime = 0;
+        let waterAnimationTime = 0;
+        const waterMaterials = new Map(); // Store water materials for animation updates
+        
+        // Hover system
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let hoveredTile = null;
+        let debugMode = false;
+        let shaderMode = false;
+
+        // biome settings with seed
+        const settings = {
+            continents: 6,
+            seaLevel: 0.8,
+            noiseAmp: 0.25,
+            ridgeIntensity: 0.3,
+            outlineAlpha: 0.05,
+            cloudDensity: 0.35,
+            cloudOpacity: 0.05,
+            rippleIntensity: 0.5,
+            rippleSpeed: 1.0,
+            treeDensity: 0.35,
+            treeScale: 1.0,
+            treesPerTile: 5,
+            treeSpacing: 0.4,
+            snowIntensity: 0.0,
+            snowSpeed: 0.1,
+            lightSpeed: 0.3,
+            waterFlowSpeed: 0.5,
+            waterWaveIntensity: 0.3,
+            edgeFoamIntensity: 1.0,
+            waveCrestSize: 1.0,
+            coastlineGlow: 1.0,
+            seed: Math.floor(Math.random() * 1e9)
+        };
+        let simplex = null; // seeded Simplex noise instance
+
+        function setSeedLabel() {
+            document.getElementById('seedLbl').textContent = `seed:${settings.seed}`;
+        }
+
+        // simple seeded PRNG (xorshift32)
+        function makeRng(seed) {
+            let x = seed >>> 0;
+            return function() { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return ((x >>> 0) / 4294967296); };
+        }
+
+        function randomUnitVector(rng) {
+            const z = rng() * 2 - 1;
+            const t = rng() * Math.PI * 2;
+            const r = Math.sqrt(1 - z*z);
+            return new THREE.Vector3(r*Math.cos(t), z, r*Math.sin(t)).normalize();
+        }
+
+        // Seeded Simplex noise and fBm
+        function noise3(v, scale) {
+            const s = scale || 1;
+            // simplex returns -1..1; map to 0..1
+            return 0.5 + 0.5 * simplex.noise3D(v.x*s, v.y*s, v.z*s);
+        }
+        function fbm(v, baseScale, octaves) {
+            let value = 0;
+            let frequency = baseScale;
+            let amplitude = 0.5;
+            for (let i = 0; i < octaves; i++) {
+                value += amplitude * noise3(v, frequency);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+            return value; // 0..1
+        }
+
+        // Nebula background functions
+        function createStarfield() {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+            const randoms = new Float32Array(starCount);
+            const starRadius = 1500;
+            
+            for (let i = 0; i < starCount; i++) {
+                const theta = Math.random() * 2 * Math.PI;
+                const phi = Math.acos(2 * Math.random() - 1);
+                positions[i * 3] = starRadius * Math.sin(phi) * Math.cos(theta);
+                positions[i * 3 + 1] = starRadius * Math.sin(phi) * Math.sin(theta);
+                positions[i * 3 + 2] = starRadius * Math.cos(phi);
+                
+                const hue = 0.55 + Math.random() * 0.2;
+                const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+                randoms[i] = Math.random() * Math.PI * 2;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('random', new THREE.BufferAttribute(randoms, 1));
+            
+            const material = new THREE.ShaderMaterial({
+                uniforms: { time: { value: 0 } },
+                vertexShader: `
+                    uniform float time;
+                    attribute float random;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        float size = 1.5 + 0.5 * sin(time * 0.5 + random);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }`,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    void main() {
+                        if (length(gl_PointCoord - vec2(0.5, 0.5)) > 0.48) discard;
+                        gl_FragColor = vec4(vColor, 1.0);
+                    }`,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                vertexColors: true
+            });
+            
+            return new THREE.Points(geometry, material);
+        }
+
+        function createNebulaStars(numStars, baseSize, sizeVariation, radius, opacity) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(numStars * 3);
+            const colors = new Float32Array(numStars * 3);
+            const sizes = new Float32Array(numStars);
+            
+            for (let i = 0; i < numStars; i++) {
+                const theta = Math.random() * 2 * Math.PI;
+                const phi = Math.acos(2 * Math.random() - 1);
+                positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+                positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                positions[i * 3 + 2] = radius * Math.cos(phi);
+                
+                const hue = 0.6 + Math.random() * 0.2;
+                const color = new THREE.Color().setHSL(hue, 0.3, 0.6);
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+                sizes[i] = baseSize + Math.random() * sizeVariation;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+            
+            const material = new THREE.ShaderMaterial({
+                uniforms: { uOpacity: { value: opacity } },
+                vertexShader: `
+                    attribute float size;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }`,
+                fragmentShader: `
+                    uniform float uOpacity;
+                    varying vec3 vColor;
+                    void main() {
+                        float dist = length(gl_PointCoord - vec2(0.5));
+                        if (dist > 0.5) discard;
+                        float alpha = 1.0 - smoothstep(0.4, 0.5, dist);
+                        gl_FragColor = vec4(vColor, alpha * uOpacity);
+                    }`,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                vertexColors: true
+            });
+            
+            return new THREE.Points(geometry, material);
+        }
+
+        function initializeNebulaBackground() {
+            // Create starfield
+            stars = createStarfield();
+            scene.add(stars);
+            
+            // Create nebula layers
+            nebulaLayer1 = createNebulaStars(150, 15, 8, 1200, 0.15);
+            nebulaLayer2 = createNebulaStars(200, 8, 5, 1000, 0.3);
+            nebulaLayer3 = createNebulaStars(250, 5, 3, 800, 0.5);
+            
+            scene.add(nebulaLayer1);
+            scene.add(nebulaLayer2);
+            scene.add(nebulaLayer3);
+        }
+
+        // Tree generation system (adapted from provided code)
+        function createTreeMaterial() {
+            return new THREE.MeshPhongMaterial({
+                color: 0x2C9E4B,
+                shininess: 20,
+                side: THREE.FrontSide
+            });
+        }
+
+        function Cone(size, translate, material) {
+            size = size || 10;
+            const geometry = new THREE.CylinderGeometry(size / 2, size, size, 6);
+            if (translate) {
+                geometry.applyMatrix4(new THREE.Matrix4().makeTranslation(0, size, 0));
+            }
+            const cone = new THREE.Mesh(geometry, material);
+            cone.castShadow = true;
+            cone.receiveShadow = true;
+            return cone;
+        }
+
+        function createTree(size) {
+            size = size || (3 + Math.random() * 2);
+            const tree = new THREE.Group();
+            const treeMaterial = createTreeMaterial();
+            
+            let lastCone;
+            let cone;
+
+            for (let i = 0; i < size; i++) {
+                cone = Cone((size - i) + 1, i, treeMaterial);
+                cone.position.y = 0;
+                
+                if (lastCone) {
+                    const box = new THREE.Box3().setFromObject(lastCone);
+                    cone.position.y = (box.max.y + box.min.y) / 2;
+                } else {
+                    cone.position.y += 2;
+                }
+                
+                lastCone = cone;
+                tree.add(cone);
+            }
+
+            return tree;
+        }
+
+        function clearTrees() {
+            // Remove existing trees
+            trees.forEach(tree => {
+                tree.traverse(child => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) child.material.dispose();
+                });
+            });
+            treeGroup.clear();
+            trees = [];
+        }
+
+        // Snow particle system
+        function generateSnowEffects() {
+            clearSnow();
+            
+            console.log(`generateSnowEffects called - snowIntensity: ${settings.snowIntensity}`);
+            
+            if (settings.snowIntensity <= 0) {
+                console.log(`Snow intensity is 0, not generating snow particles`);
+                return;
+            }
+            
+            console.log(`Proceeding with snow generation...`);
+            
+            const snow = createSnowParticleSystem();
+            if (snow) {
+                snowParticles.push(snow);
+                snowGroup.add(snow);
+                console.log(`Generated snow with ${snow.geometry.attributes.position.count} particles`);
+                console.log(`Snow group children count: ${snowGroup.children.length}`);
+                console.log(`Snow particles array length: ${snowParticles.length}`);
+            } else {
+                console.log(`Failed to create snow particles`);
+            }
+        }
+
+        function createSnowParticleSystem() {
+            const snowIntensity = settings.snowIntensity || 0.6;
+            if (snowIntensity <= 0) {
+                console.log(`createSnowParticleSystem: Snow intensity is 0`);
+                return null;
+            }
+            
+            // Create snow particles randomly across the planet
+            const particleCount = Math.floor(100 * snowIntensity); // Base 100 particles scaled by intensity
+            console.log(`createSnowParticleSystem: Creating ${particleCount} snow particles`);
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const velocities = new Float32Array(particleCount * 3);
+            const lifetimes = new Float32Array(particleCount);
+            
+            // Generate snow particles randomly around the planet
+            for (let i = 0; i < particleCount; i++) {
+                // Random position around the planet
+                const randomPos = new THREE.Vector3(
+                    (Math.random() - 0.5) * 2,
+                    (Math.random() - 0.5) * 2,
+                    (Math.random() - 0.5) * 2
+                ).normalize().multiplyScalar(radius * 1.1);
+                
+                positions[i * 3] = randomPos.x;
+                positions[i * 3 + 1] = randomPos.y;
+                positions[i * 3 + 2] = randomPos.z;
+                
+                // Set velocity to fall toward the planet
+                const velocity = randomPos.clone().normalize().multiplyScalar(-0.01 - Math.random() * 0.02);
+                
+                // Add gentle wind/drift
+                velocity.add(new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.005,
+                    (Math.random() - 0.5) * 0.005,
+                    (Math.random() - 0.5) * 0.005
+                ));
+                
+                velocities[i * 3] = velocity.x;
+                velocities[i * 3 + 1] = velocity.y;
+                velocities[i * 3 + 2] = velocity.z;
+                
+                lifetimes[i] = 100 + Math.random() * 200;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+            geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
+            
+            // Create a circular texture for soft, blurred snow particles
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            // Create circular gradient from white center to transparent edges
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.4)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 64, 64);
+            
+            const snowTexture = new THREE.CanvasTexture(canvas);
+            
+            // Create material with the soft texture
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff, // White snow
+                size: 0.12, // Slightly larger to show the soft texture better
+                map: snowTexture, // Use the soft circular texture
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                sizeAttenuation: true,
+                alphaTest: 0.01 // Low alpha test for soft edges
+            });
+            
+            const snowPoints = new THREE.Points(geometry, material);
+            
+            console.log(`createSnowParticleSystem: Created ${particleCount} snow particles`);
+            return snowPoints;
+        }
+
+        function clearSnow() {
+            snowParticles.forEach(snow => {
+                if (snow.geometry) snow.geometry.dispose();
+                if (snow.material) snow.material.dispose();
+            });
+            snowGroup.clear();
+            snowParticles = [];
+        }
+
+        // Biome generation system
+        // Get biome-specific color for shader uniforms
+        function getBiomeColor(biomeType) {
+            const biomeColors = {
+                'forest': new THREE.Color('#228B22'),      // Forest green
+                'grassland': new THREE.Color('#9ACD32'),   // Yellow green
+                'desert': new THREE.Color('#DEB887'),      // Burlywood
+                'mountain': new THREE.Color('#696969'),    // Dim gray
+                'ridge': new THREE.Color('#778899'),       // Light slate gray
+                'ocean': new THREE.Color('#4682B4'),       // Steel blue
+                'default': new THREE.Color('#32CD32')      // Lime green
+            };
+
+            return biomeColors[biomeType] || biomeColors['default'];
+        }
+
+        // Create shader materials for different biomes
+        function createShaderMaterial(biomeType, debugData) {
+            if (!shaderMode) {
+                console.log(`Shader mode is disabled, skipping shader creation for ${biomeType}`);
+                return null;
+            }
+            
+            // Map biome types to shader script IDs
+            let shaderPrefix;
+            if (biomeType === 'ocean') {
+                shaderPrefix = 'water';
+            } else if (biomeType === 'mountain' || biomeType === 'ridge') {
+                shaderPrefix = 'mountain'; // Mountains and ridges use mountain shader
+            } else if (biomeType === 'desert') {
+                shaderPrefix = 'land'; // Desert uses land shader
+            } else if (biomeType === 'forest') {
+                shaderPrefix = 'land'; // Forest uses land shader
+            } else {
+                shaderPrefix = 'land'; // Default for all other land biomes
+            }
+            
+            const vertexShaderElement = document.getElementById(`${shaderPrefix}VertexShader`);
+            const fragmentShaderElement = document.getElementById(`${shaderPrefix}FragmentShader`);
+            
+            if (!vertexShaderElement || !fragmentShaderElement) {
+                console.log(`ERROR: Shader elements not found for ${shaderPrefix} (biome: ${biomeType})`);
+                return null;
+            }
+            
+            console.log(`SUCCESS: Creating ${shaderPrefix} shader for biome: ${biomeType}`);
+            
+            const vertexShader = vertexShaderElement.textContent;
+            const fragmentShader = fragmentShaderElement.textContent;
+            
+            const uniforms = {
+                u_time: { value: 0 },
+                u_lightDirection: { value: new THREE.Vector3(1, 1, 1).normalize() },
+                u_cameraPosition: { value: camera.position }
+            };
+
+            // Add biome-specific uniforms - simplified for all shader types
+            uniforms.u_biomeColor = { value: getBiomeColor(biomeType) };
+
+            if (shaderPrefix === 'water') {
+                // Water shader uniforms for slider control
+                uniforms.u_big_waves_elevation = { value: 0.15 };
+                uniforms.u_big_waves_speed = { value: 0.75 };
+                uniforms.u_small_waves_elevation = { value: 0.05 };
+                uniforms.u_small_waves_speed = { value: 0.2 };
+                uniforms.u_depth_color = { value: new THREE.Color('#0b214a') };
+                uniforms.u_surface_color = { value: new THREE.Color('#2e89ff') };
+                uniforms.u_color_offset = { value: 0.08 };
+                uniforms.u_color_multiplier = { value: 5.0 };
+                uniforms.u_shininess = { value: 100.0 };
+                uniforms.u_foam_color = { value: new THREE.Color('#ffffff') };
+                uniforms.u_distanceToLand = { value: 1.0 }; // Will be calculated per tile
+                console.log(`Creating controllable water shader with foam effects`);
+            } else if (shaderPrefix === 'mountain') {
+                uniforms.u_elevation_scale = { value: 1.5 };
+                console.log(`Creating simplified mountain shader`);
+            } else if (shaderPrefix === 'land') {
+                uniforms.u_elevation = { value: debugData.elevation || 0.1 };
+                uniforms.u_moisture = { value: debugData.moisture || 0.5 };
+                console.log(`Creating simplified land shader`);
+            }
+            
+            return new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: uniforms,
+                transparent: biomeType === 'water' || biomeType === 'ice',
+                side: THREE.DoubleSide
+            });
+        }
+
+
+
+        function updateSnowParticles() {
+            if (snowParticles.length === 0) return; // Skip if no snow particles
+            snowParticles.forEach(snowItem => {
+                // Handle grouped snow (with test sphere)
+                if (snowItem.children && snowItem.children.length > 0) {
+                    const snow = snowItem.children.find(child => child.type === 'Points');
+                    if (!snow || !snow.geometry || !snow.geometry.attributes.position) return;
+                    
+                    // Update the Points object within the group
+                    updateSingleSnowSystem(snow);
+                } else if (snowItem.geometry && snowItem.geometry.attributes.position) {
+                    // Handle direct Points object
+                    updateSingleSnowSystem(snowItem);
+                }
+            });
+        }
+        
+        function updateSingleSnowSystem(snow) {
+            if (!snow.geometry || !snow.geometry.attributes.position) return;
+                const positions = snow.geometry.attributes.position.array;
+                const velocities = snow.geometry.attributes.velocity.array;
+                const lifetimes = snow.geometry.attributes.lifetime.array;
+                const snowSpeed = settings.snowSpeed || 1.0;
+                
+                for (let i = 0; i < positions.length / 3; i++) {
+                    const idx = i * 3;
+                    
+                    // Update position based on velocity
+                    positions[idx] += velocities[idx] * snowSpeed;
+                    positions[idx + 1] += velocities[idx + 1] * snowSpeed;
+                    positions[idx + 2] += velocities[idx + 2] * snowSpeed;
+                    
+                    // Update lifetime
+                    lifetimes[i] -= 1;
+                    
+                // Reset particle if lifetime is over or hits the planet surface
+                    const pos = new THREE.Vector3(positions[idx], positions[idx + 1], positions[idx + 2]);
+                if (lifetimes[i] <= 0 || pos.length() < radius * 0.98) {
+                    // Respawn particle at random position above planet
+                    const randomPos = new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2
+                    ).normalize().multiplyScalar(radius * 1.1);
+                    
+                    positions[idx] = randomPos.x;
+                    positions[idx + 1] = randomPos.y;
+                    positions[idx + 2] = randomPos.z;
+                    
+                    velocities[idx] = (Math.random() - 0.5) * 0.01;
+                    velocities[idx + 1] = (Math.random() - 0.5) * 0.01;
+                    velocities[idx + 2] = (Math.random() - 0.5) * 0.01;
+                            
+                        lifetimes[i] = 100 + Math.random() * 200;
+                    }
+                }
+                
+                snow.geometry.attributes.position.needsUpdate = true;
+                snow.geometry.attributes.lifetime.needsUpdate = true;
+        }
+
+        function generateForestTrees() {
+            clearTrees();
+            
+            if (!forestVertices || forestVertices.length === 0) return;
+            
+            const treeDensity = settings.treeDensity || 0.3;
+            const treeScale = settings.treeScale || 1.0;
+            const treesPerTile = settings.treesPerTile || 3;
+            const treeSpacing = settings.treeSpacing || 0.6;
+            
+            // Place trees on pre-identified forest vertices
+            forestVertices.forEach((vertex) => {
+                if (Math.random() < treeDensity) {
+                    // Generate multiple trees per tile
+                    const numTrees = Math.floor(treesPerTile * (0.7 + Math.random() * 0.6)); // Vary count slightly
+                    
+                    for (let i = 0; i < numTrees; i++) {
+                        const tree = createTree(1.5 + Math.random() * 1.5); // Much smaller base size
+                        
+                        // Create scattered positions around the vertex
+                        const normal = vertex.clone().normalize();
+                        const scatterRadius = treeSpacing; // Use setting for tree spacing
+                        
+                        // Generate random offset in tangent plane to vertex using circular distribution
+                        const tangent1 = new THREE.Vector3(1, 0, 0).cross(normal).normalize();
+                        if (tangent1.length() < 0.1) { // Handle edge case where normal is parallel to (1,0,0)
+                            tangent1.set(0, 1, 0).cross(normal).normalize();
+                        }
+                        const tangent2 = normal.clone().cross(tangent1).normalize();
+                        
+                        // Use circular distribution for more natural spacing
+                        const angle = Math.random() * Math.PI * 2;
+                        const distance = Math.sqrt(Math.random()) * scatterRadius; // sqrt for uniform distribution
+                        const offsetX = Math.cos(angle) * distance;
+                        const offsetY = Math.sin(angle) * distance;
+                        const offset = tangent1.clone().multiplyScalar(offsetX)
+                                      .add(tangent2.clone().multiplyScalar(offsetY));
+                        
+                        // Position tree with scatter offset
+                        tree.position.copy(vertex).add(offset);
+                        
+                        // Orient tree to planet surface at new position
+                        const treeNormal = tree.position.clone().normalize();
+                        tree.lookAt(tree.position.clone().add(treeNormal));
+                        tree.rotateX(Math.PI / 2); // Adjust orientation
+                        
+                        // Add slight random rotation and scale variation
+                        tree.rotateY(Math.random() * Math.PI * 2);
+                        const scale = (treeScale * 0.067) * (0.8 + Math.random() * 0.4); // 1/15th scale factor
+                        tree.scale.set(scale, scale, scale);
+                        
+                        // Move tree slightly above surface (proportional to tree size)
+                        tree.position.add(treeNormal.multiplyScalar(0.02));
+                        
+                        trees.push(tree);
+                        treeGroup.add(tree);
+                    }
+                }
+            });
+            
+            console.log(`Generated ${trees.length} trees from ${forestVertices.length} forest vertices`);
+        }
+
+        // Castle system for player start
+        let castle = null;
+        let playerStartTile = null;
+
+        // Boat system
+        let boats = [];
+        let boatGroup = new THREE.Group();
+
+        function findPlayerStartTile() {
+            // Find all land tiles (not ocean, not mountain)
+            const landTiles = [];
+            scene.traverse((child) => {
+                if (child.userData && child.userData.debugData) {
+                    const biomeType = child.userData.debugData.biomeType;
+                    if (biomeType === 'forest' || biomeType === 'grassland' || biomeType === 'desert') {
+                        landTiles.push(child);
+                    }
+                }
+            });
+            
+            if (landTiles.length === 0) {
+                console.log('No land tiles found for player start');
+                return null;
+            }
+            
+            // Pick a random land tile
+            const randomIndex = Math.floor(Math.random() * landTiles.length);
+            const selectedTile = landTiles[randomIndex];
+            
+            // Get the vertex position from the debug data
+            const vertexPosition = selectedTile.userData.debugData.vertexPosition;
+            console.log(`Selected player start tile: ${selectedTile.userData.debugData.biomeType} at vertex:`, vertexPosition);
+            return { tile: selectedTile, position: vertexPosition };
+        }
+
+        function loadCastle() {
+            if (castle) {
+                scene.remove(castle);
+                castle = null;
+            }
+            
+            console.log('Starting castle loading process...');
+            
+            // Find a suitable land tile for the castle
+            const startData = findPlayerStartTile();
+            if (!startData) {
+                console.log('Could not find suitable tile for castle');
+                return;
+            }
+            
+            playerStartTile = startData.tile;
+            console.log('Found player start tile:', playerStartTile.userData.debugData.biomeType);
+            
+            // Create a simple, guaranteed-to-be-visible castle
+            const simpleCastle = new THREE.Group();
+            
+            // Create a large, bright red box as the castle
+            const castleBase = new THREE.BoxGeometry(0.5, 0.3, 0.5);
+            const castleMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000,
+                transparent: false
+            });
+            const base = new THREE.Mesh(castleBase, castleMaterial);
+            simpleCastle.add(base);
+            
+            // Add a bright green sphere on top
+            const sphereGeometry = new THREE.SphereGeometry(0.2, 8, 6);
+            const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.position.y = 0.4;
+            simpleCastle.add(sphere);
+            
+            castle = simpleCastle;
+            
+            // Position the castle on the selected tile surface
+            const tilePosition = startData.position.clone();
+            const normal = tilePosition.clone().normalize();
+            
+            // Use the vertex position as the surface position
+            castle.position.copy(tilePosition);
+            castle.position.add(normal.clone().multiplyScalar(0.2)); // Higher above surface
+            
+            // Orient castle to stand upright on the surface
+            const up = new THREE.Vector3(0, 1, 0);
+            const quaternion = new THREE.Quaternion();
+            quaternion.setFromUnitVectors(up, normal);
+            castle.setRotationFromQuaternion(quaternion);
+            
+            // Make sure the castle is visible and not culled
+            castle.visible = true;
+            castle.frustumCulled = false;
+            
+            // Add castle to scene
+            scene.add(castle);
+            
+            // Add a test sphere to verify positioning
+            const testSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.15, 8, 6),
+                new THREE.MeshBasicMaterial({ color: 0x0000ff })
+            );
+            testSphere.position.copy(tilePosition);
+            testSphere.position.add(normal.clone().multiplyScalar(0.3));
+            scene.add(testSphere);
+            
+            console.log('Simple castle created and positioned');
+            console.log('Tile position:', tilePosition);
+            console.log('Tile normal:', normal);
+            console.log('Castle position:', castle.position);
+            console.log('Castle scale:', castle.scale);
+            console.log('Castle visible:', castle.visible);
+            
+            // Mark the tile as player start (optional visual indicator)
+            playerStartTile.userData.isPlayerStart = true;
+            
+            // Also make the tile itself more visible
+            if (playerStartTile.material) {
+                playerStartTile.material.color.setHex(0xffff00); // Bright yellow
+            }
+        }
+
+        // Boat creation functions
+        function createBoat(boatColor = 0x8B4513) {
+            const boatWidth = 8;
+            const boatHeight = 3;
+            const boatDepth = 4;
+
+            // Create boat hull (main cube)
+            const boatMaterial = new THREE.MeshLambertMaterial({ color: boatColor });
+            const boat = new THREE.Mesh(new THREE.BoxGeometry(boatWidth, boatHeight, boatDepth), boatMaterial);
+            boat.castShadow = true;
+
+            // Create sail
+            const sailGeometry = new THREE.BufferGeometry();
+            const sailVertices = new Float32Array([
+                // First triangle
+                0, 0, 0,
+                boatWidth + 3, 0, 0,
+                boatWidth + 3, 36, 0,
+                // Second triangle (for double-sided shadow)
+                0, 0, 0.1,
+                boatWidth + 3, 0, 0.1,
+                boatWidth + 3, 36, 0.1
+            ]);
+            const sailIndices = [
+                0, 1, 2,  // First triangle
+                5, 4, 3   // Second triangle (reversed for opposite side)
+            ];
+            
+            sailGeometry.setAttribute('position', new THREE.BufferAttribute(sailVertices, 3));
+            sailGeometry.setIndex(sailIndices);
+            sailGeometry.computeVertexNormals();
+
+            const sailMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const sail = new THREE.Mesh(sailGeometry, sailMaterial);
+            sail.castShadow = true;
+            sail.position.set(-boatWidth / 2 - 8, boatHeight / 2, 0);
+            boat.add(sail);
+
+            // Create bow (front part)
+            const bowGeometry = new THREE.BufferGeometry();
+            const bowVertices = new Float32Array([
+                0, boatHeight / 2, boatDepth / 2,
+                0, -boatHeight / 2, boatDepth / 2,
+                0, boatHeight / 2, -boatDepth / 2,
+                0, -boatHeight / 2, -boatDepth / 2,
+                -15, boatHeight / 2, 0
+            ]);
+            const bowIndices = [
+                0, 2, 4,  // Top face
+                4, 1, 0,  // Right face
+                4, 3, 1,  // Bottom face
+                2, 3, 4   // Left face
+            ];
+            
+            bowGeometry.setAttribute('position', new THREE.BufferAttribute(bowVertices, 3));
+            bowGeometry.setIndex(bowIndices);
+            bowGeometry.computeVertexNormals();
+
+            const bow = new THREE.Mesh(bowGeometry, boatMaterial);
+            bow.castShadow = true;
+            bow.position.set(-boatWidth / 2, 0, 0);
+            boat.add(bow);
+
+            // Add boat properties
+            boat.userData.isBoat = true;
+            boat.userData.speed = 0.02 + Math.random() * 0.03; // Random speed between 0.02 and 0.05
+            boat.userData.direction = Math.random() > 0.5 ? 1 : -1; // Random initial direction
+
+            return boat;
+        }
+
+        function findWaterTiles() {
+            const waterTiles = [];
+            scene.traverse((child) => {
+                if (child.userData && child.userData.debugData) {
+                    const dbg = child.userData.debugData;
+                    if (dbg.biomeType === 'ocean') {
+                        waterTiles.push({
+                            tile: child,
+                            center: dbg.tileCenter ? dbg.tileCenter.clone() : child.position.clone(),
+                            normal: dbg.tileNormal ? dbg.tileNormal.clone() : child.position.clone().normalize(),
+                            radius: dbg.tileRadius ? dbg.tileRadius : child.position.length()
+                        });
+                    }
+                }
+            });
+            console.log(`Found ${waterTiles.length} water tiles`);
+            return waterTiles;
+        }
+
+        function generateBoats() {
+            clearBoats();
+            
+            const waterTiles = findWaterTiles();
+            if (waterTiles.length === 0) {
+                console.log('No water tiles found for boats');
+                return;
+            }
+            
+            const boatCount = Math.min(5, Math.floor(waterTiles.length * 0.1)); // 10% of water tiles, max 5 boats
+            console.log(`Generating ${boatCount} boats from ${waterTiles.length} water tiles`);
+            
+            const boatColors = [0x8B4513, 0x654321, 0xA0522D, 0xCD853F, 0xDEB887]; // Different brown shades
+            
+            for (let i = 0; i < boatCount; i++) {
+                // Pick a random water tile
+                const waterTileData = waterTiles[Math.floor(Math.random() * waterTiles.length)];
+                
+                // Create boat
+                const boatColor = boatColors[i % boatColors.length];
+                const boat = createBoat(boatColor);
+                
+                // Position boat exactly on this tile's shell radius (snap to tile surface)
+                const normal = waterTileData.normal.clone();
+                const baseRadius = waterTileData.radius; // tile shell radius already includes elevation/extrusion
+                const surfacePos = normal.clone().multiplyScalar(baseRadius);
+                boat.position.copy(surfacePos);
+                
+                // Persist base geometry for stable bobbing later
+                boat.userData.baseNormal = normal.clone();
+                boat.userData.baseRadius = baseRadius;
+                boat.userData.basePosition = surfacePos.clone();
+                
+                
+                // Orient boat to sit properly on the water surface (same method as castle)
+                const up = new THREE.Vector3(0, 1, 0);
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromUnitVectors(up, normal);
+                boat.setRotationFromQuaternion(quaternion);
+                
+                // The boat structure: sail is at back (+X), bow is at front (-X)
+                // We want the sail to point away from planet center, bow toward center
+                // So the boat should face outward (sail away from center, bow toward center)
+                // No additional rotation needed - the boat is already oriented correctly
+                
+                // Scale boat to be appropriately sized
+                boat.scale.setScalar(0.02); // Small boats
+                
+                boats.push(boat);
+                boatGroup.add(boat);
+            }
+            
+            scene.add(boatGroup);
+            console.log(`Generated ${boats.length} boats`);
+        }
+
+        function clearBoats() {
+            boats.forEach(boat => {
+                if (boat.geometry) boat.geometry.dispose();
+                if (boat.material) boat.material.dispose();
+                // Dispose of child geometries and materials
+                boat.traverse((child) => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) child.material.dispose();
+                });
+            });
+            boatGroup.clear();
+            boats = [];
+        }
+
+        function updateBoats() {
+            // Gentle bobbing only around the tile's true shell radius; do not drift
+            const t = performance.now() * 0.001;
+            for (const boat of boats) {
+                if (!boat.userData || !boat.userData.baseNormal || !boat.userData.baseRadius) continue;
+                if (boat.userData.bobPhase === undefined) boat.userData.bobPhase = Math.random() * Math.PI * 2;
+                const bob = Math.sin(t * 0.6 + boat.userData.bobPhase) * 0.004; // +/- 0.004 around base radius
+                const radius = boat.userData.baseRadius + bob;
+                boat.position.copy(boat.userData.baseNormal).multiplyScalar(radius);
+            }
+        }
+
+        // Cloud generation function
+        function createCloudSphere() {
+            if (cloudSphere) {
+                disposeObject(cloudSphere);
+                cloudSphere = null;
+            }
+
+            if (settings.cloudDensity <= 0 || settings.cloudOpacity <= 0) {
+                return; // No clouds if density or opacity is 0
+            }
+
+            console.log('Creating cloud sphere with density:', settings.cloudDensity, 'opacity:', settings.cloudOpacity);
+
+            const cloudRadius = radius * 1.15; // Slightly larger than the planet
+            const cloudGeometry = new THREE.SphereGeometry(cloudRadius, 64, 32);
+            
+            // Simplified cloud material using basic material with alpha map
+            const cloudMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: settings.cloudOpacity,
+                side: THREE.DoubleSide,
+                depthWrite: false // Important for transparency
+            });
+
+            // Create a simple canvas texture for clouds
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            // Create noise-based cloud pattern
+            const imageData = ctx.createImageData(canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            for (let i = 0; i < canvas.width; i++) {
+                for (let j = 0; j < canvas.height; j++) {
+                    const idx = (j * canvas.width + i) * 4;
+                    
+                    // Convert to spherical coordinates for seamless texture
+                    const u = i / canvas.width * Math.PI * 2;
+                    const v = j / canvas.height * Math.PI;
+                    const x = Math.sin(v) * Math.cos(u);
+                    const y = Math.cos(v);
+                    const z = Math.sin(v) * Math.sin(u);
+                    
+                    // Simple noise function
+                    const noise1 = (Math.sin(x * 3 + settings.seed * 0.001) * Math.cos(y * 4) * Math.sin(z * 3)) * 0.5 + 0.5;
+                    const noise2 = (Math.sin(x * 7) * Math.cos(y * 8) * Math.sin(z * 6)) * 0.3 + 0.5;
+                    const noise3 = (Math.sin(x * 12) * Math.cos(y * 15) * Math.sin(z * 11)) * 0.2 + 0.5;
+                    
+                    const cloudValue = (noise1 + noise2 + noise3) / 3;
+                    
+                    // Apply density threshold
+                    const cloudMask = cloudValue > (1.0 - settings.cloudDensity) ? 1 : 0;
+                    const alpha = cloudMask * 255 * settings.cloudOpacity * 2; // Make more visible
+                    
+                    data[idx] = 255;     // R
+                    data[idx + 1] = 255; // G
+                    data[idx + 2] = 255; // B
+                    data[idx + 3] = Math.min(255, alpha); // A
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            
+            cloudMaterial.alphaMap = texture;
+            cloudMaterial.needsUpdate = true;
+
+            cloudSphere = new THREE.Mesh(cloudGeometry, cloudMaterial);
+            scene.add(cloudSphere);
+            
+            console.log('Cloud sphere created and added to scene');
+        }
+
+        // Create water shader material with ripple effects
+        function createWaterMaterial(baseColor, isCoastline = false, tileCenter = null, landDirection = null) {
+            // Try to create water shader material first
+            const waterDebugData = {
+                originalColor: baseColor,
+                biomeType: 'ocean'
+            };
+            const waterShaderMat = createShaderMaterial('ocean', waterDebugData);
+            if (waterShaderMat) {
+                console.log(`Water shader material created successfully`);
+                return waterShaderMat;
+            } else {
+                console.log(`Water shader material creation failed (shaderMode: ${shaderMode}), using regular material`);
+            }
+            
+            if (!isCoastline || settings.rippleIntensity <= 0) {
+                // Regular water material for non-coastline tiles
+                return new THREE.MeshPhongMaterial({ 
+                    color: baseColor, 
+                    transparent: false,
+                    opacity: 1.0,
+                    side: THREE.DoubleSide,
+                    shininess: 30,
+                    specular: 0x444444
+                });
+            }
+
+            // Animated water shader for coastline tiles with directional waves
+            const waterMaterial = new THREE.ShaderMaterial({
+                transparent: false,
+                side: THREE.DoubleSide,
+                uniforms: {
+                    time: { value: 0.0 },
+                    baseColor: { value: new THREE.Color(baseColor) },
+                    tileCenter: { value: tileCenter || new THREE.Vector3(0, 0, 0) },
+                    landDirection: { value: landDirection || new THREE.Vector3(1, 0, 0) },
+                    planetRadius: { value: radius }
+                },
+                vertexShader: `
+                    uniform float time;
+                    uniform float rippleIntensity;
+                    uniform float rippleSpeed;
+                    uniform vec3 tileCenter;
+                    uniform vec3 landDirection;
+                    uniform float planetRadius;
+                    
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+                    varying float vRipple;
+                    varying float vDistanceToShore;
+                    
+                    void main() {
+                        vPosition = position;
+                        
+                        // Calculate world position
+                        vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+                        
+                        // Vector from tile center to current vertex
+                        vec3 centerToVertex = normalize(worldPos - tileCenter);
+                        
+                        // Calculate how aligned this point is with the land direction
+                        float alignment = dot(centerToVertex, landDirection);
+                        
+                        // Distance from tile center
+                        float distanceFromCenter = length(worldPos - tileCenter);
+                        
+                        // Create shore distance with extended range for smoother blending
+                        // Allow negative values for better falloff calculation
+                        vDistanceToShore = alignment;
+                        
+                        // Create very smooth falloff from shore to deep ocean
+                        // Extended transition area for more gradual blending
+                        // Close to shore (alignment > 0.6): full wave effects
+                        // Far from shore (alignment < -0.3): no wave effects
+                        // Very gradual transition across larger area
+                        float shoreEffect = smoothstep(-0.4, 0.9, vDistanceToShore);
+                        
+                        // Distance along the wave direction (from center toward shore)
+                        float waveProgress = distanceFromCenter * max(0.0, vDistanceToShore);
+                        
+                        // Create multiple wave layers moving toward shore
+                        float wave1 = sin(waveProgress * 12.0 - time * rippleSpeed * 8.0) * 0.5;
+                        float wave2 = sin(waveProgress * 20.0 - time * rippleSpeed * 6.0) * 0.3;
+                        float wave3 = sin(waveProgress * 35.0 - time * rippleSpeed * 10.0) * 0.2;
+                        
+                        // Combine waves with shore effect
+                        vRipple = (wave1 + wave2 + wave3) * shoreEffect * rippleIntensity;
+                        
+                        // Apply displacement with smooth falloff toward ocean
+                        vec3 normalizedPos = normalize(position);
+                        float displacement = vRipple * 0.03 * shoreEffect;
+                        vec3 displacedPosition = position + normalizedPos * displacement;
+                        
+                        vNormal = normalize(normalMatrix * normal);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(displacedPosition, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 baseColor;
+                    uniform float time;
+                    uniform float rippleSpeed;
+                    
+                    varying vec3 vPosition;
+                    varying vec3 vNormal;
+                    varying float vRipple;
+                    varying float vDistanceToShore;
+                    
+                    void main() {
+                        // Base water color (this should match normal ocean tiles)
+                        vec3 baseWaterColor = baseColor;
+                        
+                        // Calculate distance-based effects with very smooth falloff
+                        // Extended blending area for seamless transition
+                        // vDistanceToShore: 1.0 = at shore, 0.0 = away from shore
+                        float shoreIntensity = smoothstep(-0.2, 1.0, vDistanceToShore);
+                        
+                        // Additional smoothing layer for ultra-gradual blending
+                        shoreIntensity = smoothstep(0.0, 1.0, shoreIntensity);
+                        
+                        // Start with base water color
+                        vec3 color = baseWaterColor;
+                        
+                        // Add wave brightness variation with very gradual intensity
+                        float waveBrightness = 1.0 + vRipple * 0.3 * shoreIntensity;
+                        vec3 waveColor = baseWaterColor * waveBrightness;
+                        
+                        // Add foam effect with extended gradual fade
+                        float foamIntensity = smoothstep(0.5, 1.0, vDistanceToShore) * shoreIntensity;
+                        float foam = foamIntensity * (sin(time * rippleSpeed * 4.0) * 0.08 + 0.08);
+                        waveColor = mix(waveColor, vec3(1.0, 1.0, 1.0), foam);
+                        
+                        // Add shimmer with extended gradual falloff
+                        float shimmerIntensity = shoreIntensity * 0.12;
+                        float shimmer = sin(time * rippleSpeed * 5.0 + vPosition.x * 15.0 + vPosition.z * 15.0) 
+                                      * shimmerIntensity + 1.0;
+                        waveColor *= shimmer;
+                        
+                        // Ultra-smooth blending with power curve for more gradual transition
+                        float blendFactor = pow(shoreIntensity, 1.5);
+                        color = mix(baseWaterColor, waveColor, blendFactor);
+                        
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            // Store reference for animation updates
+            const materialId = Date.now() + Math.random();
+            waterMaterials.set(materialId, waterMaterial);
+
+            return waterMaterial;
+        }
+
+        function shade(color, factor) {
+            const r = Math.max(0, Math.min(255, Math.floor(((color >> 16) & 255) * factor)));
+            const g = Math.max(0, Math.min(255, Math.floor(((color >> 8) & 255) * factor)));
+            const b = Math.max(0, Math.min(255, Math.floor((color & 255) * factor)));
+            return (r << 16) | (g << 8) | b;
+        }
+
+        function disposeObject(obj) {
+            if (!obj) return;
+            obj.traverse?.(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                    else child.material.dispose();
+                }
+            });
+            scene.remove(obj);
+        }
+
+        function buildPlanet(detail) {
+            console.log('buildPlanet()', { detail, settings: { ...settings } });
+            // reseed simplex with current seed to ensure determinism across rebuilds
+            simplex = new SimplexNoise(settings.seed.toString());
+            
+            // Clear hover state
+            hoveredTile = null;
+            
+            // Clean previous
+            disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup); disposeObject(cloudSphere);
+            
+            // Clear water materials map
+            waterMaterials.clear();
+
+            // Base icosahedron
+            const geom = new THREE.IcosahedronGeometry(radius, detail);
+
+            // No fallback sphere needed - tiles render directly
+            solidSphere = null;
+
+            // Build dual wireframe from face centroids
+            const vertices = [];
+            const pos = geom.attributes.position;
+            for (let i = 0; i < pos.count; i++) vertices.push(new THREE.Vector3().fromBufferAttribute(pos, i));
+            
+            // Store vertices globally for tree generation
+            globalVertices = [...vertices];
+            forestVertices = []; // Reset forest vertices for new planet
+
+            // Handle both indexed and non-indexed geometry
+        const faces = [];
+            if (geom.index) {
+                // Indexed geometry - use indices
+                for (let i = 0; i < geom.index.count; i += 3) {
+                    faces.push({ a: geom.index.getX(i), b: geom.index.getX(i + 1), c: geom.index.getX(i + 2) });
+            }
+        } else {
+                // Non-indexed geometry - build vertex map by comparing positions
+                const vertexMap = new Map(); // maps vertex key to index
+                const uniqueVertices = [];
+                
+                for (let i = 0; i < pos.count; i++) {
+                    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+                    const key = `${v.x.toFixed(8)}_${v.y.toFixed(8)}_${v.z.toFixed(8)}`;
+                    
+                    if (!vertexMap.has(key)) {
+                        vertexMap.set(key, uniqueVertices.length);
+                        uniqueVertices.push(v);
+                    }
+                }
+                
+                // Rebuild vertices array with unique vertices
+                vertices.length = 0;
+                vertices.push(...uniqueVertices);
+                
+                // Build faces using mapped indices
+                for (let i = 0; i < pos.count; i += 3) {
+                    const vA = new THREE.Vector3().fromBufferAttribute(pos, i);
+                    const vB = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+                    const vC = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+                    
+                    const keyA = `${vA.x.toFixed(8)}_${vA.y.toFixed(8)}_${vA.z.toFixed(8)}`;
+                    const keyB = `${vB.x.toFixed(8)}_${vB.y.toFixed(8)}_${vB.z.toFixed(8)}`;
+                    const keyC = `${vC.x.toFixed(8)}_${vC.y.toFixed(8)}_${vC.z.toFixed(8)}`;
+                    
+                    faces.push({ 
+                        a: vertexMap.get(keyA), 
+                        b: vertexMap.get(keyB), 
+                        c: vertexMap.get(keyC) 
+                    });
+                }
+                
+                console.log('Merged', pos.count, 'vertices into', vertices.length, 'unique vertices');
+            }
+
+            // Face centroids
+            const centroids = faces.map(f => new THREE.Vector3().add(vertices[f.a]).add(vertices[f.b]).add(vertices[f.c]).divideScalar(3).normalize().multiplyScalar(radius * 1.0005));
+
+            const key = v => `${v.x.toFixed(6)}_${v.y.toFixed(6)}_${v.z.toFixed(6)}`;
+            const edgeToFaces = new Map();
+            faces.forEach((f, idx) => {
+                [[f.a, f.b], [f.b, f.c], [f.c, f.a]].forEach(([iA, iB]) => {
+                    const k1 = key(vertices[iA]); const k2 = key(vertices[iB]);
+                    const ek = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`;
+                    if (!edgeToFaces.has(ek)) edgeToFaces.set(ek, []);
+                    edgeToFaces.get(ek).push(idx);
+                });
+            });
+
+            const linePoints = [];
+            for (const pair of edgeToFaces.values()) {
+                if (pair.length === 2) {
+                    linePoints.push(centroids[pair[0]].clone(), centroids[pair[1]].clone());
+                }
+            }
+
+            const wireGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x333333, linewidth: 1, transparent: true, opacity: 0.1 });
+            wireframe = new THREE.LineSegments(wireGeom, wireMat);
+            // wireframe will be added AFTER tiles so it sits on top with translucency
+
+            // Dispose original geom (we cloned for solid)
+            geom.dispose();
+
+            // Build filled tiles with biome colors (simple triangular faces)
+            tileGroup = new THREE.Group();
+            // debug counts
+            let countOcean = 0, countLand = 0, countIce = 0, countDesert = 0, countRidges = 0, countForest = 0, countMountain = 0, countTotal = 0;
+
+            // Continents seeds
+            const rng = makeRng(settings.seed);
+            const seeds = Array.from({length: settings.continents}, () => randomUnitVector(rng));
+            const wind = new THREE.Vector3(0.7, 0.0, -0.3).normalize();
+
+            function elevationAt(n) {
+                // Base plate distance (nearest seed), 0..1
+                let minD = 2;
+                for (const s of seeds) { const d = 1 - n.dot(s); if (d < minD) minD = d; }
+                let base = 1 - (minD / 2); // closer to a seed => higher
+                base = Math.pow(base, 1.35); // sharpen continental shelves
+
+                // fBm noise: frequency tied to noiseAmp for stronger visual impact
+                const freq = 1.8 + settings.noiseAmp * 1.2;
+                const detailNoise = fbm(n, freq, 4); // 0..1
+                // Center noise around 0 and scale by noiseAmp
+                const noiseTerm = (detailNoise - 0.5) * (0.9 * settings.noiseAmp);
+
+                // Enhanced mountain ridge system
+                let ridgeTerm = 0;
+                if (settings.ridgeIntensity > 0) {
+                    // Primary ridge lines - sharp mountain ranges
+                    const ridge1 = Math.abs(fbm(n, 2.8, 3) - 0.5) * 2.0; // 0..1
+                    const ridge2 = Math.abs(fbm(n.clone().multiplyScalar(1.7), 3.2, 3) - 0.5) * 2.0;
+                    const ridge3 = Math.abs(fbm(n.clone().multiplyScalar(0.6), 4.1, 2) - 0.5) * 2.0;
+                    
+                    // Combine ridges with different weights
+                    const ridgePattern = (ridge1 * 0.6 + ridge2 * 0.3 + ridge3 * 0.1);
+                    
+                    // Only create ridges on land areas (higher base elevation)
+                    const landMask = Math.max(0, Math.min(1, (base - 0.3) * 2.0));
+                    
+                    // Sharp ridge peaks with valleys
+                    const sharpRidge = Math.pow(ridgePattern, 0.8);
+                    ridgeTerm = sharpRidge * settings.ridgeIntensity * landMask * 0.4;
+                }
+
+                let h = base * 0.85 + noiseTerm + ridgeTerm;
+                // Normalize and clamp
+                return Math.max(0, Math.min(1, h));
+            }
+
+            console.log('Total vertices:', vertices.length, 'Total faces:', faces.length);
+            let tilesCreated = 0;
+            
+            // Build vertex-to-faces mapping for dual polyhedron (hexagons/pentagons)
+            const vertexToFaces = new Map();
+            faces.forEach((face, faceIndex) => {
+                [face.a, face.b, face.c].forEach(vi => {
+                    if (!vertexToFaces.has(vi)) vertexToFaces.set(vi, []);
+                    vertexToFaces.get(vi).push(faceIndex);
+                });
+            });
+            console.log('vertexToFaces map size:', vertexToFaces.size);
+            const adjacencyCounts = Array.from(vertexToFaces.values()).map(faces => faces.length);
+            console.log('Adjacent face counts - min:', Math.min(...adjacencyCounts), 'max:', Math.max(...adjacencyCounts), 'avg:', adjacencyCounts.reduce((a,b)=>a+b)/adjacencyCounts.length);
+            
+            // Pre-calculate elevation for all vertices
+            const vertexElevations = vertices.map(v => {
+                const normalized = v.clone().normalize();
+                const elev = elevationAt(normalized);
+                let extrude = (elev - settings.seaLevel);
+                extrude = Math.max(-0.03, Math.min(0.08, extrude * 0.18));
+                return 1.0 + extrude;
+            });
+            
+            // Pre-calculate which vertices are ocean vs land for coastline detection
+            const vertexBiomes = vertices.map(v => {
+                const normalized = v.clone().normalize();
+                const elev = elevationAt(normalized);
+                return elev < settings.seaLevel ? 'ocean' : 'land';
+            });
+            
+            // Function to check if a vertex is coastline (ocean adjacent to land)
+            function isCoastlineVertex(vertexIndex) {
+                if (vertexBiomes[vertexIndex] !== 'ocean') return false;
+                
+                const adjacentFaces = vertexToFaces.get(vertexIndex) || [];
+                // Check if any adjacent vertices are land
+                for (const faceIdx of adjacentFaces) {
+                    const face = faces[faceIdx];
+                    const adjacentVertices = [face.a, face.b, face.c];
+                    for (const adjVertex of adjacentVertices) {
+                        if (adjVertex !== vertexIndex && vertexBiomes[adjVertex] === 'land') {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            
+            // Calculate the direction from water tile center toward nearest land
+            function calculateLandDirection(waterVertexIndex) {
+                const waterCenter = vertices[waterVertexIndex].clone().normalize();
+                const adjacentFaces = vertexToFaces.get(waterVertexIndex) || [];
+                
+                // Collect all adjacent land vertices
+                const landVertices = [];
+                for (const faceIdx of adjacentFaces) {
+                    const face = faces[faceIdx];
+                    const adjacentVertices = [face.a, face.b, face.c];
+                    for (const adjVertex of adjacentVertices) {
+                        if (adjVertex !== waterVertexIndex && vertexBiomes[adjVertex] === 'land') {
+                            landVertices.push(vertices[adjVertex].clone().normalize());
+                        }
+                    }
+                }
+                
+                if (landVertices.length === 0) {
+                    return new THREE.Vector3(1, 0, 0); // Default direction
+                }
+                
+                // Calculate average direction to all adjacent land vertices
+                const avgLandDirection = new THREE.Vector3(0, 0, 0);
+                for (const landVertex of landVertices) {
+                    avgLandDirection.add(landVertex);
+                }
+                avgLandDirection.divideScalar(landVertices.length).normalize();
+                
+                // Calculate direction from water center to average land position
+                const directionToLand = avgLandDirection.clone().sub(waterCenter).normalize();
+                
+                return directionToLand;
+            }
+            
+            // Create hexagonal/pentagonal tiles using dual polyhedron approach
+            let skippedCount = 0;
+            vertices.forEach((vertex, vi) => {
+                const adj = vertexToFaces.get(vi) || [];
+                if (adj.length < 1) { 
+                    skippedCount++;
+                    return; // need at least 1 face
+                }
+                
+                const center = vertex.clone().normalize();
+                const elev = elevationAt(center);
+                const shell = vertexElevations[vi];
+                
+                // Get face centroids that surround this vertex
+                const faceCentroids = adj.map(faceIdx => {
+                    const face = faces[faceIdx];
+            const vA = vertices[face.a];
+            const vB = vertices[face.b];
+            const vC = vertices[face.c];
+                    return new THREE.Vector3().add(vA).add(vB).add(vC).divideScalar(3).normalize();
+                });
+                
+                // Sort face centroids by angle around the vertex to create proper polygon
+                const up = center.clone();
+                let right = new THREE.Vector3(1,0,0).cross(up).normalize();
+                if (right.length() < 0.1) right = new THREE.Vector3(0,1,0).cross(up).normalize();
+                const forward = up.clone().cross(right).normalize();
+                
+                const sortedCentroids = faceCentroids.map((c, i) => ({ centroid: c, index: i }))
+                    .sort((a, b) => {
+                        const vecA = a.centroid.clone().sub(center).normalize();
+                        const vecB = b.centroid.clone().sub(center).normalize();
+                        const angA = Math.atan2(vecA.dot(forward), vecA.dot(right));
+                        const angB = Math.atan2(vecB.dot(forward), vecB.dot(right));
+                        return angA - angB;
+                    });
+                
+                // Create polygon (hexagon for most vertices, pentagon for 12 vertices)
+                const boundary = sortedCentroids.map(s => s.centroid.clone().normalize());
+                
+                // Build triangle fan from center to boundary points with consistent elevation
+                const pos = [];
+                const nrm = [];
+                const centerPos = center.clone().multiplyScalar(radius * shell);
+                
+                // Calculate boundary point elevations based on their vertex positions
+                const boundaryElevations = boundary.map(boundaryPoint => {
+                    // Find the closest vertex index for this boundary point
+                    let closestVertexIdx = 0;
+                    let minDist = Infinity;
+                    for (let vi = 0; vi < vertices.length; vi++) {
+                        const dist = boundaryPoint.distanceTo(vertices[vi].clone().normalize());
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestVertexIdx = vi;
+                        }
+                    }
+                    return vertexElevations[closestVertexIdx];
+                });
+                
+                // Calculate smoothed normals for boundary vertices by averaging with neighbors
+                const smoothedBoundaryNormals = boundary.map((boundaryPoint, idx) => {
+                    // Start with the base normal pointing outward from sphere center
+                    const baseNormal = boundaryPoint.clone().normalize();
+                    
+                    // Find nearby vertices and average their normals for smoothing
+                    let avgNormal = baseNormal.clone();
+                    let count = 1;
+                    
+                    for (let vi = 0; vi < vertices.length; vi++) {
+                        const dist = boundaryPoint.distanceTo(vertices[vi].clone().normalize());
+                        if (dist < 0.1) { // Close enough to influence normal
+                            avgNormal.add(vertices[vi].clone().normalize());
+                            count++;
+                        }
+                    }
+                    
+                    return avgNormal.divideScalar(count).normalize();
+                });
+                
+                // Keep tiles sharp - simple triangle fan
+                for (let i = 0; i < boundary.length; i++) {
+                    const P = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
+                    const N = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
+                    
+                    // Triangle: center -> P -> N
+                    pos.push(centerPos.x, centerPos.y, centerPos.z);
+                    pos.push(P.x, P.y, P.z);
+                    pos.push(N.x, N.y, N.z);
+                    
+                    // Use smoothed normals for better lighting transitions
+                    const centerNormal = centerPos.clone().normalize();
+                    const pNormal = smoothedBoundaryNormals[i];
+                    const nNormal = smoothedBoundaryNormals[(i + 1) % boundary.length];
+                    
+                    nrm.push(centerNormal.x, centerNormal.y, centerNormal.z);
+                    nrm.push(pNormal.x, pNormal.y, pNormal.z);
+                    nrm.push(nNormal.x, nNormal.y, nNormal.z);
+                }
+                
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+                
+                // Smooth biome coloring with transitions
+                const isOcean = elev < settings.seaLevel;
+                let tileColor;
+                let moist = 0; // Default moisture
+                let biomeType = 'ocean'; // Default biome type
+                
+                // Calculate temperature for all tiles (ocean and land) in Celsius
+                const lat = Math.abs(center.y);
+                // Reduce extreme values by using gentler curves and smaller multipliers
+                let tempNormalized = 1 - Math.pow(lat, 1.1) - elev*0.3;
+                // Apply additional smoothing to reduce extreme values
+                tempNormalized = Math.max(0.1, Math.min(0.95, tempNormalized));
+                
+                // Convert to Celsius range (-10°C to 40°C)
+                let tempCelsius;
+                if (isOcean) {
+                    // Ocean temperatures: 2°C to 28°C (more stable than land)
+                    tempNormalized = Math.max(0.2, Math.min(0.8, tempNormalized));
+                    tempCelsius = 2 + (tempNormalized - 0.2) * (28 - 2) / (0.8 - 0.2);
+                } else {
+                    // Land temperatures: -10°C to 40°C (full range, but skewed toward warmer)
+                    tempNormalized = Math.max(0, Math.min(1, tempNormalized));
+                    // Apply a curve to reduce tiles in the -10°C to 0°C range
+                    // Use a power curve to shift distribution toward warmer temperatures
+                    const skewedTemp = Math.pow(tempNormalized, 0.7); // 0.7 makes it skew warmer
+                    tempCelsius = -10 + skewedTemp * (40 - (-10));
+                }
+                
+                // Store both normalized (0-1) and Celsius values
+                const temp = tempNormalized; // Keep normalized for biome calculations (0-1 range)
+                const tempC = tempCelsius;   // Celsius for display (-10°C to 40°C range, skewed warmer)
+                
+                if (isOcean) {
+                    // Ocean depth gradient
+                    const depth = (settings.seaLevel - elev) / settings.seaLevel;
+                    const deepBlue = { r: 0x00, g: 0x33, b: 0x99 };
+                    const shallowBlue = { r: 0x44, g: 0x88, b: 0xFF };
+                    const r = Math.floor(deepBlue.r + (shallowBlue.r - deepBlue.r) * (1 - depth));
+                    const g = Math.floor(deepBlue.g + (shallowBlue.g - deepBlue.g) * (1 - depth));
+                    const b = Math.floor(deepBlue.b + (shallowBlue.b - deepBlue.b) * (1 - depth));
+                    tileColor = (r << 16) | (g << 8) | b;
+                    biomeType = 'ocean';
+                    countOcean++;
+                } else {
+                    // Calculate moisture for land tiles
+                    moist = Math.max(0, Math.min(1, 0.55*fbm(center, 1.8, 3) + 0.45*Math.max(0, center.dot(wind))))
+                                   * (0.9 + 0.3*(1-elev));
+                    
+                    // Define biome colors
+                    const ice = { r: 0xFF, g: 0xFF, b: 0xFF };      // white
+                    const desert = { r: 0xFF, g: 0x88, b: 0x33 };   // orange
+                    const grassland = { r: 0x88, g: 0xCC, b: 0x44 }; // light green
+                    const forest = { r: 0x22, g: 0x88, b: 0x22 };   // dark green
+                    const mountain = { r: 0x77, g: 0x55, b: 0x33 }; // brown
+                    const ridge = { r: 0x99, g: 0x66, b: 0x44 };    // distinctive ridge brown-orange
+                    
+                    let finalColor = grassland; // default
+                    biomeType = 'grassland';
+                    
+                    // Calculate ridge detection using ridge intensity setting
+                    let ridgeValue = 0;
+                    if (settings.ridgeIntensity > 0) {
+                        // Use multiple noise layers to detect ridge-like formations
+                        const ridge1 = Math.abs(fbm(center, 2.8, 3) - 0.5) * 2.0;
+                        const ridge2 = Math.abs(fbm(center.clone().multiplyScalar(1.7), 3.2, 3) - 0.5) * 2.0;
+                        const ridge3 = Math.abs(fbm(center.clone().multiplyScalar(0.6), 4.1, 2) - 0.5) * 2.0;
+                        ridgeValue = (ridge1 * 0.6 + ridge2 * 0.3 + ridge3 * 0.1);
+                        
+                        // Only on land areas (any elevation above sea level)
+                        const landMask = Math.max(0, Math.min(1, (elev - settings.seaLevel) * 5.0));
+                        ridgeValue *= landMask;
+                    }
+                    
+                    // Check for ridges first (can appear on any land elevation)
+                    if (ridgeValue > 0.4 && settings.ridgeIntensity > 0.1 && elev > settings.seaLevel + 0.05) {
+                        // Mountain ridges - can appear on lower elevations too
+                        finalColor = ridge;
+                        biomeType = 'ridge';
+                        countRidges++;
+                    }
+                    // High elevation areas
+                    else if (elev > settings.seaLevel + 0.4) {
+                        // No ice generation - all cold areas become mountains
+                            finalColor = mountain;
+                            biomeType = 'mountain';
+                                countMountain++;
+                    }
+                    // Cold regions - will be handled by chance-based ice system
+                    else if (temp < 0.1) { // Cold region threshold (~5°C)
+                        finalColor = grassland;
+                        biomeType = 'grassland';
+                        countLand++;
+                    }
+                    // Hot and dry = desert (works on any land elevation)
+                    else if (moist < 0.5 && temp > 0.25 && elev > settings.seaLevel + 0.02) {
+                        const dryFactor = Math.min(1, (0.5 - moist) / 0.5 * (temp - 0.25) / 0.75);
+                        finalColor = {
+                            r: Math.floor(grassland.r + (desert.r - grassland.r) * dryFactor),
+                            g: Math.floor(grassland.g + (desert.g - grassland.g) * dryFactor),
+                            b: Math.floor(grassland.b + (desert.b - grassland.b) * dryFactor)
+                        };
+                        biomeType = dryFactor > 0.2 ? 'desert' : 'grassland';
+                        if (dryFactor > 0.2) countDesert++; else countLand++;
+                    }
+                    // Wet regions = forest
+                    else if (moist > 0.6) {
+                        const wetFactor = Math.min(1, (moist - 0.6) / 0.4);
+                        finalColor = {
+                            r: Math.floor(grassland.r + (forest.r - grassland.r) * wetFactor),
+                            g: Math.floor(grassland.g + (forest.g - grassland.g) * wetFactor),
+                            b: Math.floor(grassland.b + (forest.b - grassland.b) * wetFactor)
+                        };
+                        biomeType = 'forest';
+                        countForest++;
+                        
+                        // Store vertex for tree generation
+                        forestVertices.push(vertex.clone());
+                    }
+                    else {
+                        biomeType = 'grassland';
+                        countLand++;
+                    }
+                    
+                    tileColor = (finalColor.r << 16) | (finalColor.g << 8) | finalColor.b;
+                }
+                countTotal++;
+                tilesCreated++;
+                
+                // Create solid triangle tile
+                let mat;
+                if (isOcean) {
+                    // Check if this is a coastline tile
+                    const isCoastline = isCoastlineVertex(vi);
+                    const tileCenter = center.clone().multiplyScalar(radius * shell);
+                    let landDirection = null;
+                    
+                    if (isCoastline) {
+                        // Calculate direction from tile center toward land
+                        landDirection = calculateLandDirection(vi);
+                    }
+                    
+                    mat = createWaterMaterial(tileColor, isCoastline, tileCenter, landDirection);
+                } else {
+                    // Try to create shader material first, fallback to Phong
+                    const shaderMat = createShaderMaterial(biomeType, { elevation: elev, moisture: moist });
+                    if (shaderMat) {
+                        mat = shaderMat;
+                } else {
+                    // Use Phong material for land tiles
+                    mat = new THREE.MeshPhongMaterial({ 
+                        color: tileColor, 
+                        transparent: false,
+                        opacity: 1.0,
+                        side: THREE.DoubleSide,
+                        shininess: 10,
+                        specular: 0x111111
+                    });
+                    }
+                }
+                const m = new THREE.Mesh(g, mat);
+                
+                // Store original color and material info for hover system
+                m.userData.originalColor = tileColor;
+                m.userData.originalMaterial = mat;
+                m.userData.isShaderMaterial = mat instanceof THREE.ShaderMaterial;
+                m.userData.tileId = vi; // unique tile identifier
+                m.userData.isTile = true; // mark as hoverable tile
+                
+                // Store debug data for biome calculations
+                m.userData.debugData = {
+                    elevation: elev,
+                    temperature: temp,
+                    temperatureCelsius: tempC,
+                    moisture: moist,
+                    biomeType: biomeType,
+                    isOcean: isOcean,
+                    latitude: Math.abs(center.y),
+                    seaLevel: settings.seaLevel,
+                    vertexPosition: vertex.clone(), // Original vertex direction
+                    // Precise world-space tile center and normal at the rendered shell radius
+                    tileCenter: centerPos.clone(),
+                    tileNormal: center.clone().normalize(),
+                    tileRadius: centerPos.length(),
+                    originalColor: tileColor // Store the original tile color for shader materials
+                };
+                
+                tileGroup.add(m);
+
+                // Add rounded corner highlighting outline
+                const outlinePos = [];
+                const cornerRadius = 0.08; // Radius for rounded corners
+                const cornerSegments = 3; // Segments per rounded corner
+                
+                for (let i = 0; i < boundary.length; i++) {
+                    const current = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
+                    const next = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
+                    const prev = boundary[(i - 1 + boundary.length) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i - 1 + boundary.length) % boundary.length]);
+                    
+                    // Calculate vectors for corner rounding
+                    const toPrev = prev.clone().sub(current).normalize();
+                    const toNext = next.clone().sub(current).normalize();
+                    
+                    // Create rounded corner
+                    const cornerStart = current.clone().add(toPrev.clone().multiplyScalar(cornerRadius));
+                    const cornerEnd = current.clone().add(toNext.clone().multiplyScalar(cornerRadius));
+                    
+                    // Add corner start point
+                    outlinePos.push(cornerStart.x, cornerStart.y, cornerStart.z);
+                    
+                    // Add rounded corner points
+                    for (let j = 1; j <= cornerSegments; j++) {
+                        const t = j / (cornerSegments + 1);
+                        const cornerPoint = cornerStart.clone().lerp(cornerEnd, t);
+                        // Curve the corner slightly
+                        const curvedPoint = cornerPoint.clone().lerp(current, 0.2 * Math.sin(t * Math.PI));
+                        outlinePos.push(curvedPoint.x, curvedPoint.y, curvedPoint.z);
+                    }
+                    
+                    // Add corner end point
+                    outlinePos.push(cornerEnd.x, cornerEnd.y, cornerEnd.z);
+                }
+                
+                // Close the loop back to first point
+                if (outlinePos.length > 0) {
+                    outlinePos.push(outlinePos[0], outlinePos[1], outlinePos[2]);
+                }
+                
+                const outlineGeom = new THREE.BufferGeometry();
+                outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
+                const outlineMat = new THREE.LineBasicMaterial({ 
+                    color: 0x000000, // black borders
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: settings.outlineAlpha
+                });
+                const outline = new THREE.Line(outlineGeom, outlineMat);
+                tileGroup.add(outline);
+            });
+            scene.add(tileGroup);
+            
+            // Generate trees on forest tiles
+            generateForestTrees();
+            
+            // Load castle at player start position
+            loadCastle();
+            
+            // Generate boats on water tiles
+            generateBoats();
+            
+            // Snow effects disabled by default
+            
+            // Update ice counter (no new ice generation)
+            const totalIceCount = countIce;
+            
+            console.log(`Created ${tilesCreated} tiles, counted ${countTotal} biomes, skipped ${skippedCount} vertices`);
+            console.log(`Biome counts - Ocean: ${countOcean}, Land: ${countLand}, Forest: ${countForest}, Mountain: ${countMountain}, Ice: ${countIce}, Desert: ${countDesert}, Ridges: ${countRidges}`);
+            // update debug label with nice formatting
+            const lbl = document.getElementById('seedLbl');
+            if (lbl) {
+                lbl.innerHTML = `
+                    <div style="font-size: 11px; line-height: 1.3;">
+                        <div><strong>Seed:</strong> ${settings.seed}</div>
+                        <div><strong>Tiles:</strong> ${countTotal}</div>
+                        <div style="margin-top: 2px;">
+                            <span style="color: #0066FF;">Ocean: ${countOcean}</span> | 
+                            <span style="color: #00CC00;">Land: ${countLand}</span>
+                        </div>
+                        <div>
+                            <span style="color: #228B22;">Forest: ${countForest}</span> | 
+                            <span style="color: #8B7355;">Mountain: ${countMountain}</span>
+                        </div>
+                        <div>
+                            <span style="color: #FFFFFF; background: #666; padding: 0 2px;">Ice: ${totalIceCount}</span> | 
+                            <span style="color: #FF6600;">Desert: ${countDesert}</span>
+                        </div>
+                        <div>
+                            <span style="color: #996644;">Ridges: ${countRidges}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            // No wireframe needed - tiles have their own borders
+            
+            // Create cloud layer
+            createCloudSphere();
+        }
+
+        // UI
+        const detailSlider = document.getElementById('detail');
+        const detailValue = document.getElementById('detailValue');
+        const continentsSlider = document.getElementById('continents');
+        const continentsValue = document.getElementById('continentsValue');
+        const seaSlider = document.getElementById('sea');
+        const seaValue = document.getElementById('seaValue');
+        const noiseSlider = document.getElementById('noise');
+        const noiseValue = document.getElementById('noiseValue');
+        const ridgesSlider = document.getElementById('ridges');
+        const ridgesValue = document.getElementById('ridgesValue');
+        const alphaSlider = document.getElementById('alpha');
+        const alphaValue = document.getElementById('alphaValue');
+        const cloudDensitySlider = document.getElementById('cloudDensity');
+        const cloudDensityValue = document.getElementById('cloudDensityValue');
+        const cloudOpacitySlider = document.getElementById('cloudOpacity');
+        const cloudOpacityValue = document.getElementById('cloudOpacityValue');
+        const regenBtn = document.getElementById('regen');
+
+        function setDetail(val) {
+            detailValue.textContent = val;
+            lastDetail = parseInt(val,10);
+            console.log('detail changed ->', lastDetail);
+            buildPlanet(lastDetail);
+        }
+        function updateAndRebuild(reason) {
+            if (reason) console.log('rebuild reason:', reason);
+            setSeedLabel();
+            buildPlanet(lastDetail);
+        }
+
+        detailSlider.addEventListener('input', e => setDetail(e.target.value));
+        detailSlider.addEventListener('change', e => setDetail(e.target.value));
+
+        function onContinents(val) {
+            settings.continents = parseInt(val,10);
+            continentsValue.textContent = settings.continents;
+            updateAndRebuild('continents');
+        }
+        function onSea(val) {
+            settings.seaLevel = parseFloat(val);
+            seaValue.textContent = settings.seaLevel.toFixed(2);
+            updateAndRebuild('sea');
+        }
+        function onNoise(val) {
+            settings.noiseAmp = parseFloat(val);
+            noiseValue.textContent = settings.noiseAmp.toFixed(2);
+            updateAndRebuild('noise');
+        }
+        function onRidges(val) {
+            settings.ridgeIntensity = parseFloat(val);
+            ridgesValue.textContent = settings.ridgeIntensity.toFixed(2);
+            updateAndRebuild('ridges');
+        }
+        function onAlpha(val) {
+            settings.outlineAlpha = parseFloat(val);
+            alphaValue.textContent = settings.outlineAlpha.toFixed(2);
+            updateAndRebuild('alpha');
+        }
+        function onCloudDensity(val) {
+            settings.cloudDensity = parseFloat(val);
+            cloudDensityValue.textContent = settings.cloudDensity.toFixed(2);
+            updateCloudSettings();
+        }
+        function onCloudOpacity(val) {
+            settings.cloudOpacity = parseFloat(val);
+            cloudOpacityValue.textContent = settings.cloudOpacity.toFixed(2);
+            updateCloudSettings();
+        }
+        
+        function updateCloudSettings() {
+            // If clouds are turned off, remove them entirely
+            if (settings.cloudDensity <= 0 || settings.cloudOpacity <= 0) {
+                if (cloudSphere) {
+                    disposeObject(cloudSphere);
+                    cloudSphere = null;
+                }
+            } else {
+                // Recreate clouds with new settings
+                createCloudSphere();
+            }
+        }
+        function onTreeDensity(val) {
+            settings.treeDensity = parseFloat(val);
+            document.getElementById('treeDensityValue').textContent = settings.treeDensity.toFixed(2);
+            generateForestTrees(); // Regenerate trees with new density
+        }
+        function onTreeScale(val) {
+            settings.treeScale = parseFloat(val);
+            document.getElementById('treeScaleValue').textContent = settings.treeScale.toFixed(1);
+            generateForestTrees(); // Regenerate trees with new scale
+        }
+        function onTreesPerTile(val) {
+            settings.treesPerTile = parseInt(val);
+            document.getElementById('treesPerTileValue').textContent = settings.treesPerTile;
+            generateForestTrees(); // Regenerate trees with new count per tile
+        }
+        function onTreeSpacing(val) {
+            settings.treeSpacing = parseFloat(val);
+            document.getElementById('treeSpacingValue').textContent = settings.treeSpacing.toFixed(1);
+            generateForestTrees(); // Regenerate trees with new spacing
+        }
+        function onSnowIntensity(val) {
+            settings.snowIntensity = parseFloat(val);
+            document.getElementById('snowIntensityValue').textContent = settings.snowIntensity.toFixed(1);
+            // Snow effects disabled by default
+        }
+        function onSnowSpeed(val) {
+            settings.snowSpeed = parseFloat(val);
+            document.getElementById('snowSpeedValue').textContent = settings.snowSpeed.toFixed(1);
+            // Snow speed changes are applied in real-time during animation, no regeneration needed
+        }
+        function onLightSpeed(val) {
+            settings.lightSpeed = parseFloat(val);
+            document.getElementById('lightSpeedValue').textContent = settings.lightSpeed.toFixed(1);
+            // Light speed changes are applied in real-time during animation, no regeneration needed
+        }
+        
+        function onWaterFlow(val) {
+            settings.waterFlowSpeed = parseFloat(val);
+            document.getElementById('waterFlowValue').textContent = settings.waterFlowSpeed.toFixed(1);
+            // Update all water materials (both shader and regular)
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData && child.userData.debugData.biomeType === 'ocean') {
+                    if (shaderMode && child.material && child.material.uniforms && child.material.uniforms.u_flowSpeed) {
+                        // Update shader uniforms
+                        child.material.uniforms.u_flowSpeed.value = settings.waterFlowSpeed;
+                        child.material.uniforms.u_waveIntensity.value = settings.waterWaveIntensity;
+                        child.material.uniforms.u_edgeFoamIntensity.value = settings.edgeFoamIntensity;
+                        child.material.uniforms.u_waveCrestSize.value = settings.waveCrestSize;
+                        child.material.uniforms.u_coastlineGlow.value = settings.coastlineGlow;
+                    } else if (!shaderMode && child.material && child.material.color) {
+                        // Update regular material color based on water settings
+                        updateRegularWaterMaterial(child);
+                    }
+                }
+            });
+        }
+        
+        function onWaterWave(val) {
+            settings.waterWaveIntensity = parseFloat(val);
+            document.getElementById('waterWaveValue').textContent = settings.waterWaveIntensity.toFixed(1);
+            // Update all water materials (both shader and regular)
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData && child.userData.debugData.biomeType === 'ocean') {
+                    if (shaderMode && child.material && child.material.uniforms && child.material.uniforms.u_waveIntensity) {
+                        // Update shader uniforms
+                        child.material.uniforms.u_waveIntensity.value = settings.waterWaveIntensity;
+                    } else if (!shaderMode && child.material && child.material.color) {
+                        // Update regular material color based on water settings
+                        updateRegularWaterMaterial(child);
+                    }
+                }
+            });
+        }
+        
+        // Advanced Water Shader Handlers
+        function onBigWaveHeight(val) {
+            const value = parseFloat(val);
+            document.getElementById('bigWaveHeightValue').textContent = value.toFixed(2);
+            updateWaterUniforms('u_big_waves_elevation', value);
+        }
+        
+        function onBigWaveSpeed(val) {
+            const value = parseFloat(val);
+            document.getElementById('bigWaveSpeedValue').textContent = value.toFixed(2);
+            updateWaterUniforms('u_big_waves_speed', value);
+        }
+        
+        function onSmallWaveHeight(val) {
+            const value = parseFloat(val);
+            document.getElementById('smallWaveHeightValue').textContent = value.toFixed(2);
+            updateWaterUniforms('u_small_waves_elevation', value);
+        }
+        
+        function onSmallWaveSpeed(val) {
+            const value = parseFloat(val);
+            document.getElementById('smallWaveSpeedValue').textContent = value.toFixed(2);
+            updateWaterUniforms('u_small_waves_speed', value);
+        }
+        
+        function onSmallWaveIterations(val) {
+            const value = parseFloat(val);
+            document.getElementById('smallWaveIterationsValue').textContent = value;
+            updateWaterUniforms('u_small_waves_iterations', value);
+        }
+        
+        function onColorOffset(val) {
+            const value = parseFloat(val);
+            document.getElementById('colorOffsetValue').textContent = value.toFixed(2);
+            updateWaterUniforms('u_color_offset', value);
+        }
+        
+        function onColorMultiplier(val) {
+            const value = parseFloat(val);
+            document.getElementById('colorMultiplierValue').textContent = value.toFixed(1);
+            updateWaterUniforms('u_color_multiplier', value);
+        }
+        
+        function onWaterShininess(val) {
+            const value = parseFloat(val);
+            document.getElementById('waterShininessValue').textContent = value;
+            updateWaterUniforms('u_shininess', value);
+        }
+        
+        function onDepthColor(val) {
+            const color = new THREE.Color(val);
+            updateWaterUniforms('u_depth_color', color);
+        }
+        
+        function onSurfaceColor(val) {
+            const color = new THREE.Color(val);
+            updateWaterUniforms('u_surface_color', color);
+        }
+        
+        function onFoamColor(val) {
+            const color = new THREE.Color(val);
+            updateWaterUniforms('u_foam_color', color);
+        }
+        
+        // Land Shader Handlers
+        function onLandElevation(val) {
+            const value = parseFloat(val);
+            document.getElementById('landElevationValue').textContent = value.toFixed(2);
+            updateLandUniforms('u_elevation', value);
+        }
+        
+        function onSandColor(val) {
+            const color = new THREE.Color(val);
+            updateLandUniforms('u_sand_color', color);
+        }
+        
+        function onGrassColor(val) {
+            const color = new THREE.Color(val);
+            updateLandUniforms('u_grass_color', color);
+        }
+        
+        function onWetSandColor(val) {
+            const color = new THREE.Color(val);
+            updateLandUniforms('u_wet_sand_color', color);
+        }
+        
+        // Ice Shader Handlers
+        
+        
+        // Mountain Shader Handlers
+        function onMountainElevation(val) {
+            const value = parseFloat(val);
+            document.getElementById('mountainElevationValue').textContent = value.toFixed(1);
+            updateMountainUniforms('u_elevation_scale', value);
+        }
+        
+        function onSnowLevel(val) {
+            const value = parseFloat(val);
+            document.getElementById('snowLevelValue').textContent = value.toFixed(2);
+            updateMountainUniforms('u_snow_level', value);
+        }
+        
+        function onDarkRockColor(val) {
+            const color = new THREE.Color(val);
+            updateMountainUniforms('u_rock_color_dark', color);
+        }
+        
+        function onLightRockColor(val) {
+            const color = new THREE.Color(val);
+            updateMountainUniforms('u_rock_color_light', color);
+        }
+        
+        function onSnowColor(val) {
+            const color = new THREE.Color(val);
+            updateMountainUniforms('u_snow_color', color);
+        }
+        
+        // Helper functions to update shader uniforms
+        function updateWaterUniforms(uniformName, value) {
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData && child.userData.debugData.biomeType === 'ocean') {
+                    if (shaderMode && child.material && child.material.uniforms && child.material.uniforms[uniformName]) {
+                        child.material.uniforms[uniformName].value = value;
+                    }
+                }
+            });
+        }
+        
+        function updateLandUniforms(uniformName, value) {
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData) {
+                    const biomeType = child.userData.debugData.biomeType;
+                    if ((biomeType === 'desert' || biomeType === 'forest') && shaderMode && child.material && child.material.uniforms && child.material.uniforms[uniformName]) {
+                        child.material.uniforms[uniformName].value = value;
+                    }
+                }
+            });
+        }
+        
+        
+        function updateMountainUniforms(uniformName, value) {
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData) {
+                    const biomeType = child.userData.debugData.biomeType;
+                    if ((biomeType === 'mountain' || biomeType === 'ridge') && shaderMode && child.material && child.material.uniforms && child.material.uniforms[uniformName]) {
+                        child.material.uniforms[uniformName].value = value;
+                    }
+                }
+            });
+        }
+        
+        function onEdgeFoam(val) {
+            settings.edgeFoamIntensity = parseFloat(val);
+            document.getElementById('edgeFoamValue').textContent = settings.edgeFoamIntensity.toFixed(1);
+            // Update all water materials (both shader and regular)
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData && child.userData.debugData.biomeType === 'ocean') {
+                    if (shaderMode && child.material && child.material.uniforms && child.material.uniforms.u_edgeFoamIntensity) {
+                        // Update shader uniforms
+                        child.material.uniforms.u_edgeFoamIntensity.value = settings.edgeFoamIntensity;
+                    } else if (!shaderMode && child.material && child.material.color) {
+                        // Update regular material color based on water settings
+                        updateRegularWaterMaterial(child);
+                    }
+                }
+            });
+        }
+        
+        function onWaveCrest(val) {
+            settings.waveCrestSize = parseFloat(val);
+            document.getElementById('waveCrestValue').textContent = settings.waveCrestSize.toFixed(1);
+            // Update all water materials (both shader and regular)
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData && child.userData.debugData.biomeType === 'ocean') {
+                    if (shaderMode && child.material && child.material.uniforms && child.material.uniforms.u_waveCrestSize) {
+                        // Update shader uniforms
+                        child.material.uniforms.u_waveCrestSize.value = settings.waveCrestSize;
+                    } else if (!shaderMode && child.material && child.material.color) {
+                        // Update regular material color based on water settings
+                        updateRegularWaterMaterial(child);
+                    }
+                }
+            });
+        }
+        
+        function onCoastlineGlow(val) {
+            settings.coastlineGlow = parseFloat(val);
+            document.getElementById('coastlineGlowValue').textContent = settings.coastlineGlow.toFixed(1);
+            // Update all water materials (both shader and regular)
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData && child.userData.debugData.biomeType === 'ocean') {
+                    if (shaderMode && child.material && child.material.uniforms && child.material.uniforms.u_coastlineGlow) {
+                        // Update shader uniforms
+                        child.material.uniforms.u_coastlineGlow.value = settings.coastlineGlow;
+                    } else if (!shaderMode && child.material && child.material.color) {
+                        // Update regular material color based on water settings
+                        updateRegularWaterMaterial(child);
+                    }
+                }
+            });
+        }
+        
+        function updateRegularWaterMaterial(tile) {
+            // Update regular water material based on water settings
+            if (!tile.material || !tile.material.color) return;
+            
+            // Base water color
+            const baseColor = new THREE.Color(0x006BB3);
+            
+            // Apply water wave intensity as color variation
+            const waveIntensity = settings.waterWaveIntensity;
+            const flowSpeed = settings.waterFlowSpeed;
+            const edgeFoam = settings.edgeFoamIntensity;
+            const waveCrest = settings.waveCrestSize;
+            const coastlineGlow = settings.coastlineGlow;
+            
+            // Create color variations based on settings
+            const r = Math.min(1, baseColor.r + (waveIntensity * 0.2) + (edgeFoam * 0.51));
+            const g = Math.min(1, baseColor.g + (waveIntensity * 0.1) + (coastlineGlow * 0.1));
+            const b = Math.min(1, baseColor.b + (waveCrest * 0.1) + (flowSpeed * 0.05));
+            
+            // Apply the modified color
+            tile.material.color.setRGB(r, g, b);
+            
+            // Add some transparency based on settings
+            tile.material.transparent = true;
+            tile.material.opacity = Math.max(0.7, 1.0 - (waveIntensity * 0.2));
+        }
+        
+        function updateWaterShaderSettings() {
+            // Update all active water materials
+            waterMaterials.forEach(material => {
+                if (material.uniforms) {
+                }
+            });
+        }
+
+        continentsSlider.addEventListener('input', e => onContinents(e.target.value));
+        continentsSlider.addEventListener('change', e => onContinents(e.target.value));
+        seaSlider.addEventListener('input', e => onSea(e.target.value));
+        seaSlider.addEventListener('change', e => onSea(e.target.value));
+        noiseSlider.addEventListener('input', e => onNoise(e.target.value));
+        noiseSlider.addEventListener('change', e => onNoise(e.target.value));
+        ridgesSlider.addEventListener('input', e => onRidges(e.target.value));
+        ridgesSlider.addEventListener('change', e => onRidges(e.target.value));
+        alphaSlider.addEventListener('input', e => onAlpha(e.target.value));
+        alphaSlider.addEventListener('change', e => onAlpha(e.target.value));
+        cloudDensitySlider.addEventListener('input', e => onCloudDensity(e.target.value));
+        cloudDensitySlider.addEventListener('change', e => onCloudDensity(e.target.value));
+        cloudOpacitySlider.addEventListener('input', e => onCloudOpacity(e.target.value));
+        cloudOpacitySlider.addEventListener('change', e => onCloudOpacity(e.target.value));
+        
+        const treeDensitySlider = document.getElementById('treeDensity');
+        const treeScaleSlider = document.getElementById('treeScale');
+        const treesPerTileSlider = document.getElementById('treesPerTile');
+        const treeSpacingSlider = document.getElementById('treeSpacing');
+        const snowIntensitySlider = document.getElementById('snowIntensity');
+        const snowSpeedSlider = document.getElementById('snowSpeed');
+        const lightSpeedSlider = document.getElementById('lightSpeed');
+        treeDensitySlider.addEventListener('input', e => onTreeDensity(e.target.value));
+        treeDensitySlider.addEventListener('change', e => onTreeDensity(e.target.value));
+        treeScaleSlider.addEventListener('input', e => onTreeScale(e.target.value));
+        treeScaleSlider.addEventListener('change', e => onTreeScale(e.target.value));
+        treesPerTileSlider.addEventListener('input', e => onTreesPerTile(e.target.value));
+        treesPerTileSlider.addEventListener('change', e => onTreesPerTile(e.target.value));
+        treeSpacingSlider.addEventListener('input', e => onTreeSpacing(e.target.value));
+        treeSpacingSlider.addEventListener('change', e => onTreeSpacing(e.target.value));
+        snowIntensitySlider.addEventListener('input', e => onSnowIntensity(e.target.value));
+        snowIntensitySlider.addEventListener('change', e => onSnowIntensity(e.target.value));
+        snowSpeedSlider.addEventListener('input', e => onSnowSpeed(e.target.value));
+        snowSpeedSlider.addEventListener('change', e => onSnowSpeed(e.target.value));
+        lightSpeedSlider.addEventListener('input', e => onLightSpeed(e.target.value));
+        lightSpeedSlider.addEventListener('change', e => onLightSpeed(e.target.value));
+        
+        
+        
+        // Advanced Water Shader Controls
+        const bigWaveHeightSlider = document.getElementById('bigWaveHeight');
+        const bigWaveSpeedSlider = document.getElementById('bigWaveSpeed');
+        const smallWaveHeightSlider = document.getElementById('smallWaveHeight');
+        const smallWaveSpeedSlider = document.getElementById('smallWaveSpeed');
+        const smallWaveIterationsSlider = document.getElementById('smallWaveIterations');
+        const colorOffsetSlider = document.getElementById('colorOffset');
+        const colorMultiplierSlider = document.getElementById('colorMultiplier');
+        const waterShininessSlider = document.getElementById('waterShininess');
+        
+        bigWaveHeightSlider.addEventListener('input', e => onBigWaveHeight(e.target.value));
+        bigWaveHeightSlider.addEventListener('change', e => onBigWaveHeight(e.target.value));
+        bigWaveSpeedSlider.addEventListener('input', e => onBigWaveSpeed(e.target.value));
+        bigWaveSpeedSlider.addEventListener('change', e => onBigWaveSpeed(e.target.value));
+        smallWaveHeightSlider.addEventListener('input', e => onSmallWaveHeight(e.target.value));
+        smallWaveHeightSlider.addEventListener('change', e => onSmallWaveHeight(e.target.value));
+        smallWaveSpeedSlider.addEventListener('input', e => onSmallWaveSpeed(e.target.value));
+        smallWaveSpeedSlider.addEventListener('change', e => onSmallWaveSpeed(e.target.value));
+        smallWaveIterationsSlider.addEventListener('input', e => onSmallWaveIterations(e.target.value));
+        smallWaveIterationsSlider.addEventListener('change', e => onSmallWaveIterations(e.target.value));
+        colorOffsetSlider.addEventListener('input', e => onColorOffset(e.target.value));
+        colorOffsetSlider.addEventListener('change', e => onColorOffset(e.target.value));
+        colorMultiplierSlider.addEventListener('input', e => onColorMultiplier(e.target.value));
+        colorMultiplierSlider.addEventListener('change', e => onColorMultiplier(e.target.value));
+        waterShininessSlider.addEventListener('input', e => onWaterShininess(e.target.value));
+        waterShininessSlider.addEventListener('change', e => onWaterShininess(e.target.value));
+        
+        // Water Color Controls
+        const depthColorPicker = document.getElementById('depthColor');
+        const surfaceColorPicker = document.getElementById('surfaceColor');
+        const foamColorPicker = document.getElementById('foamColor');
+        
+        depthColorPicker.addEventListener('change', e => onDepthColor(e.target.value));
+        surfaceColorPicker.addEventListener('change', e => onSurfaceColor(e.target.value));
+        foamColorPicker.addEventListener('change', e => onFoamColor(e.target.value));
+        
+        // Land Shader Controls
+        const landElevationSlider = document.getElementById('landElevation');
+        const sandColorPicker = document.getElementById('sandColor');
+        const grassColorPicker = document.getElementById('grassColor');
+        const wetSandColorPicker = document.getElementById('wetSandColor');
+        
+        landElevationSlider.addEventListener('input', e => onLandElevation(e.target.value));
+        landElevationSlider.addEventListener('change', e => onLandElevation(e.target.value));
+        sandColorPicker.addEventListener('change', e => onSandColor(e.target.value));
+        grassColorPicker.addEventListener('change', e => onGrassColor(e.target.value));
+        wetSandColorPicker.addEventListener('change', e => onWetSandColor(e.target.value));
+        
+        
+        // Mountain Shader Controls
+        const mountainElevationSlider = document.getElementById('mountainElevation');
+        const snowLevelSlider = document.getElementById('snowLevel');
+        const darkRockColorPicker = document.getElementById('darkRockColor');
+        const lightRockColorPicker = document.getElementById('lightRockColor');
+        const snowColorPicker = document.getElementById('snowColor');
+        
+        mountainElevationSlider.addEventListener('input', e => onMountainElevation(e.target.value));
+        mountainElevationSlider.addEventListener('change', e => onMountainElevation(e.target.value));
+        snowLevelSlider.addEventListener('input', e => onSnowLevel(e.target.value));
+        snowLevelSlider.addEventListener('change', e => onSnowLevel(e.target.value));
+        darkRockColorPicker.addEventListener('change', e => onDarkRockColor(e.target.value));
+        lightRockColorPicker.addEventListener('change', e => onLightRockColor(e.target.value));
+        snowColorPicker.addEventListener('change', e => onSnowColor(e.target.value));
+        
+        regenBtn.addEventListener('click', ()=>{ settings.seed = Math.floor(Math.random()*1e9); updateAndRebuild('regen'); });
+        
+        // Debug toggle functionality
+        const debugToggleBtn = document.getElementById('debug-toggle');
+        debugToggleBtn.addEventListener('click', () => {
+            debugMode = !debugMode;
+            debugToggleBtn.textContent = `Debug: ${debugMode ? 'On' : 'Off'}`;
+            debugToggleBtn.style.background = debugMode ? '#4FC3F7' : '#fff';
+            debugToggleBtn.style.color = debugMode ? '#fff' : '#000';
+            
+            // Hide debug overlay when turning off debug mode
+            if (!debugMode) {
+                const debugOverlay = document.getElementById('debug-overlay');
+                debugOverlay.style.display = 'none';
+            }
+        });
+
+        // Shader toggle functionality
+        const shaderToggleBtn = document.getElementById('shader-toggle');
+        shaderToggleBtn.addEventListener('click', () => {
+            shaderMode = !shaderMode;
+            shaderToggleBtn.textContent = `Shaders: ${shaderMode ? 'On' : 'Off'}`;
+            shaderToggleBtn.style.background = shaderMode ? '#4FC3F7' : '#fff';
+            shaderToggleBtn.style.color = shaderMode ? '#fff' : '#000';
+            
+            // Regenerate planet with new shader mode
+            updateAndRebuild('shader toggle');
+        });
+        
+        // Tab functionality
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetTab = button.id.replace('tab-', '');
+                
+                // Remove active class from all buttons
+                tabButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.style.background = '#f0f0f0';
+                    btn.style.color = '#333';
+                });
+                
+                // Add active class to clicked button
+                button.classList.add('active');
+                button.style.background = '#4CAF50';
+                button.style.color = 'white';
+                
+                // Hide all tab contents
+                tabContents.forEach(content => {
+                    content.style.display = 'none';
+                });
+                
+                // Show target tab content
+                const targetContent = document.getElementById(`tab-${targetTab}-content`);
+                if (targetContent) {
+                    targetContent.style.display = 'block';
+                }
+            });
+        });
+
+        // Initial
+        setSeedLabel();
+        setDetail(detailSlider.value);
+
+        // Resize
+        // Mouse hover functionality
+        function onMouseMove(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update raycaster
+            raycaster.setFromCamera(mouse, camera);
+            
+            if (tileGroup) {
+                // Filter to only tile meshes (not outlines)
+                const tileMeshes = tileGroup.children.filter(child => 
+                    child.userData && child.userData.isTile === true
+                );
+                
+                // Find intersections with tile meshes only
+                const intersects = raycaster.intersectObjects(tileMeshes, false);
+                
+                // Reset previous hover
+                if (hoveredTile) {
+                    resetTileColor(hoveredTile);
+                    hoveredTile = null;
+                    // Hide debug info when not hovering
+                    if (debugMode) {
+                        hideDebugInfo();
+                    }
+                }
+                
+                // Apply new hover - find the closest tile intersection
+                if (intersects.length > 0) {
+                    // Sort by distance and take the closest
+                    intersects.sort((a, b) => a.distance - b.distance);
+                    
+                    for (let i = 0; i < intersects.length; i++) {
+                        const tile = intersects[i].object;
+                        if (tile.userData && tile.userData.isTile && tile.userData.originalColor !== undefined) {
+                            hoveredTile = tile;
+                            // Apply highlight based on material type
+                            setTileHighlight(tile);
+                            
+                            // Show debug info if debug mode is enabled
+                            if (debugMode && tile.userData.debugData) {
+                                showDebugInfo(tile);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Helper function to reset tile color based on material type
+        function resetTileColor(tile) {
+            if (tile.userData.isShaderMaterial) {
+                // For shader materials, restore the original shader color
+                if (tile.material.uniforms && tile.userData.originalShaderColor) {
+                    if (tile.material.uniforms.u_biomeColor) {
+                        tile.material.uniforms.u_biomeColor.value.copy(tile.userData.originalShaderColor);
+                    } else if (tile.material.uniforms.u_surface_color) {
+                        tile.material.uniforms.u_surface_color.value.copy(tile.userData.originalShaderColor);
+                    } else if (tile.material.uniforms.u_rock_color_light) {
+                        tile.material.uniforms.u_rock_color_light.value.copy(tile.userData.originalShaderColor);
+                    }
+                }
+            } else {
+                // For regular materials, reset the color property
+                if (tile.material.color) {
+                    tile.material.color.setHex(tile.userData.originalColor);
+                }
+            }
+        }
+        
+        // Helper function to set tile highlight based on material type
+        function setTileHighlight(tile) {
+            if (tile.userData.isShaderMaterial) {
+                // Store original shader color before changing it
+                if (tile.material.uniforms) {
+                    if (tile.material.uniforms.u_biomeColor) {
+                        // Store original biome color
+                        tile.userData.originalShaderColor = tile.material.uniforms.u_biomeColor.value.clone();
+                        tile.material.uniforms.u_biomeColor.value.set(1.0, 1.0, 0.0); // Yellow
+                    } else if (tile.material.uniforms.u_surface_color) {
+                        // Store original water surface color
+                        tile.userData.originalShaderColor = tile.material.uniforms.u_surface_color.value.clone();
+                        tile.material.uniforms.u_surface_color.value.set(1.0, 1.0, 0.0);
+                    } else if (tile.material.uniforms.u_rock_color_light) {
+                        // Store original mountain color
+                        tile.userData.originalShaderColor = tile.material.uniforms.u_rock_color_light.value.clone();
+                        tile.material.uniforms.u_rock_color_light.value.set(1.0, 1.0, 0.0);
+                    }
+                }
+            } else {
+                // For regular materials, modify the color property
+                if (tile.material.color) {
+                    tile.material.color.setHex(0xFFFF00);
+                }
+            }
+        }
+        
+        // Helper function to show debug info for a tile
+        function showDebugInfo(tile) {
+            const debugData = tile.userData.debugData;
+            const debugContent = document.getElementById('debug-content');
+            const debugOverlay = document.getElementById('debug-overlay');
+            
+            if (!debugData || !debugContent || !debugOverlay) return;
+            
+            // Format the debug information
+            const info = `
+                <div><strong>Biome:</strong> ${debugData.biomeType}</div>
+                <div><strong>Type:</strong> ${debugData.isOcean ? 'Ocean' : 'Land'}</div>
+                <div><strong>Elevation:</strong> ${debugData.elevation.toFixed(3)}</div>
+                <div><strong>Temperature:</strong> ${debugData.temperatureCelsius.toFixed(1)}°C</div>
+                <div><strong>Moisture:</strong> ${debugData.moisture.toFixed(3)}</div>
+                <div><strong>Latitude:</strong> ${debugData.latitude.toFixed(3)}</div>
+                <div><strong>Sea Level:</strong> ${debugData.seaLevel.toFixed(3)}</div>
+                <div><strong>Tile ID:</strong> ${tile.userData.tileId}</div>
+            `;
+            
+            debugContent.innerHTML = info;
+            debugOverlay.style.display = 'block';
+        }
+        
+        // Helper function to hide debug info
+        function hideDebugInfo() {
+            const debugOverlay = document.getElementById('debug-overlay');
+            if (debugOverlay) {
+                debugOverlay.style.display = 'none';
+            }
+        }
+        
+        // Add mouse event listener
+        renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Calculate distance to water for shoreline effects
+        function calculateDistanceToWater(currentTile) {
+            if (!currentTile || !currentTile.userData) return 1.0;
+
+            let minDistance = Infinity;
+            const currentPosition = currentTile.position;
+
+            // Find all water tiles and calculate distance to closest one
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData &&
+                    child.userData.debugData.biomeType === 'ocean' && child !== currentTile) {
+
+                    const distance = currentPosition.distanceTo(child.position);
+                    minDistance = Math.min(minDistance, distance);
+                }
+            });
+
+            // Normalize distance (typical tile spacing is around 0.1-0.3)
+            return minDistance === Infinity ? 1.0 : Math.min(minDistance / 0.3, 1.0);
+        }
+
+        function calculateDistanceToLand(currentTile) {
+            if (!currentTile || !currentTile.userData) return 1.0;
+
+            let minDistance = Infinity;
+            const currentPosition = currentTile.position;
+
+            // Find all land tiles and calculate distance to closest one
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData &&
+                    child.userData.debugData.biomeType !== 'ocean' && child !== currentTile) {
+
+                    const distance = currentPosition.distanceTo(child.position);
+                    minDistance = Math.min(minDistance, distance);
+                }
+            });
+
+            // Normalize distance (typical tile spacing is around 0.1-0.3)
+            return minDistance === Infinity ? 1.0 : Math.min(minDistance / 0.3, 1.0);
+        }
+
+        // Update shader uniforms for all tiles
+        function updateShaderUniforms() {
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.isShaderMaterial &&
+                    child.material && child.material.uniforms) {
+
+                    const uniforms = child.material.uniforms;
+                    const biomeType = child.userData.debugData ? child.userData.debugData.biomeType : null;
+
+                    // Update time
+                    if (uniforms.u_time) {
+                        uniforms.u_time.value = Date.now() * 0.001;
+                    }
+
+                    // Update camera position
+                    if (uniforms.u_cameraPosition) {
+                        uniforms.u_cameraPosition.value.copy(camera.position);
+                    }
+
+                    // Update distance to water for land tiles
+                    if (uniforms.u_distanceToWater && biomeType && biomeType !== 'ocean') {
+                        uniforms.u_distanceToWater.value = calculateDistanceToWater(child);
+                    }
+
+                    // Update distance to land for water tiles
+                    if (uniforms.u_distanceToLand && biomeType === 'ocean') {
+                        uniforms.u_distanceToLand.value = calculateDistanceToLand(child);
+                    }
+                }
+            });
+        }
+
+        // Animate
+        (function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Update shader uniforms for enhanced visual effects
+            updateShaderUniforms();
+
+            // Slow cloud rotation for movement effect
+            cloudAnimationTime += 0.002;
+            if (cloudSphere) {
+                cloudSphere.rotation.y = cloudAnimationTime;
+                cloudSphere.rotation.x = cloudAnimationTime * 0.3;
+            }
+            
+            // Update nebula background animations
+            nebulaAnimationTime += 0.016;
+            if (stars && stars.material.uniforms) {
+                stars.material.uniforms.time.value = nebulaAnimationTime;
+            }
+            if (nebulaLayer1) nebulaLayer1.rotation.y += 0.00005;
+            if (nebulaLayer2) nebulaLayer2.rotation.y += 0.0001;
+            if (nebulaLayer3) nebulaLayer3.rotation.y += 0.00015;
+            
+            // Update water ripple animation
+            waterAnimationTime += 0.016; // ~60fps
+            waterMaterials.forEach(material => {
+                if (material.uniforms && material.uniforms.time) {
+                    material.uniforms.time.value = waterAnimationTime;
+                }
+            });
+            
+            // Update shader uniforms for biome materials
+            if (shaderMode) {
+                scene.traverse((child) => {
+                    if (child.userData && child.userData.isTile && child.material && child.material.uniforms) {
+                        // Update common shader uniforms
+                        if (child.material.uniforms.u_time) {
+                            child.material.uniforms.u_time.value = waterAnimationTime;
+                        }
+                        if (child.material.uniforms.u_lightDirection) {
+                            child.material.uniforms.u_lightDirection.value = dir.position.clone().normalize();
+                        }
+                        if (child.material.uniforms.u_cameraPosition) {
+                            child.material.uniforms.u_cameraPosition.value = camera.position;
+                        }
+                        
+                        // Update water-specific shader uniforms
+                        if (child.userData.debugData && child.userData.debugData.biomeType === 'ocean') {
+                            if (child.material.uniforms.u_flowSpeed) {
+                                child.material.uniforms.u_flowSpeed.value = settings.waterFlowSpeed;
+                            }
+                            if (child.material.uniforms.u_waveIntensity) {
+                                child.material.uniforms.u_waveIntensity.value = settings.waterWaveIntensity;
+                            }
+                            if (child.material.uniforms.u_edgeFoamIntensity) {
+                                child.material.uniforms.u_edgeFoamIntensity.value = settings.edgeFoamIntensity;
+                            }
+                            if (child.material.uniforms.u_waveCrestSize) {
+                                child.material.uniforms.u_waveCrestSize.value = settings.waveCrestSize;
+                            }
+                            if (child.material.uniforms.u_coastlineGlow) {
+                                child.material.uniforms.u_coastlineGlow.value = settings.coastlineGlow;
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Update snow particle animation
+            updateSnowParticles();
+            
+            // Update boats
+            updateBoats();
+            
+            // Update orbiting light
+            lightOrbitAngle += lightOrbitSpeed * settings.lightSpeed;
+            const lightX = Math.cos(lightOrbitAngle) * lightOrbitRadius;
+            const lightY = Math.sin(lightOrbitAngle) * lightOrbitRadius * 0.3; // Slight vertical variation
+            const lightZ = Math.sin(lightOrbitAngle) * lightOrbitRadius;
+            dir.position.set(lightX, lightY, lightZ);
+            dir.target.position.set(0, 0, 0); // Always point toward planet center
+            dir.target.updateMatrixWorld();
+            
+            renderer.render(scene, camera);
+        })();
+    </script>
 </body>
 </html>
+
