@@ -278,379 +278,238 @@
         </div>
     </div>
 
-    <!-- Include latest Three.js r128 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Include Three.js r121 - more compatible with proto.js while still modern -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r121/three.min.js"></script>
 
     <!-- Include jQuery and jQuery UI for proto.js compatibility -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
 
-    <!-- Modern Three.js r128 Implementation -->
+    <!-- Three.js r121 Compatibility Layer -->
     <script>
-        console.log('Loading modern Three.js implementation...');
+        console.log('Loading Three.js r121 compatibility layer...');
 
-        // Pre-emptively create THREE.Projector before proto.js tries to use it
-        THREE.Projector = function() {
-            // Empty constructor - will be replaced with modern Raycaster functionality
+        // Check if THREE.Projector exists in r121, if not create it
+        if (typeof THREE.Projector === 'undefined') {
+            THREE.Projector = function() {
+                // Return object with methods that proto.js expects
+                return {
+                    pickingRay: function(vector, camera) {
+                        if (!window.raycaster) {
+                            window.raycaster = new THREE.Raycaster();
+                        }
+                        window.raycaster.setFromCamera(vector, camera);
+                        return window.raycaster;
+                    },
+                    unprojectVector: function(vector, camera) {
+                        return vector.unproject(camera);
+                    },
+                    projectVector: function(vector, camera) {
+                        return vector.project(camera);
+                    }
+                };
+            };
+        }
+
+        // Check if THREE.Geometry still exists in r121, if not create stub
+        if (typeof THREE.Geometry === 'undefined') {
+            THREE.Geometry = function() {
+                // Create a proper BufferGeometry instead
+                const bufferGeometry = new THREE.BufferGeometry();
+                // Add legacy properties for compatibility
+                bufferGeometry.vertices = [];
+                bufferGeometry.faces = [];
+                bufferGeometry.colors = [];
+                return bufferGeometry;
+            };
+        }
+
+        // Check if THREE.Face3 still exists in r121, if not create stub
+        if (typeof THREE.Face3 === 'undefined') {
+            THREE.Face3 = function(a, b, c, normal, colors) {
+                // Legacy Face3 object structure
+                this.a = a;
+                this.b = b;
+                this.c = c;
+                this.normal = normal || new THREE.Vector3();
+                this.vertexColors = colors || [];
+            };
+        }
+
+        // Check if we still need compatibility constants in r121
+        if (typeof THREE.CullFaceFront === 'undefined') {
+            THREE.CullFaceFront = 1;
+        }
+        if (typeof THREE.FrontFaceDirectionCW === 'undefined') {
+            THREE.FrontFaceDirectionCW = 1;
+        }
+        if (typeof THREE.VertexColors === 'undefined') {
+            THREE.VertexColors = 2; // r121 might still use the constant
+        }
+
+        // Prevent addEventListener errors by ensuring objects that might be passed to event handlers have the method
+        const ensureEventTarget = function(obj) {
+            if (obj && typeof obj === 'object' && !obj.addEventListener) {
+                obj.addEventListener = function() {
+                    console.log('addEventListener called on non-DOM object (stubbed)');
+                };
+                obj.removeEventListener = function() {
+                    console.log('removeEventListener called on non-DOM object (stubbed)');
+                };
+                obj.dispatchEvent = function() {
+                    console.log('dispatchEvent called on non-DOM object (stubbed)');
+                };
+            }
+            return obj;
         };
 
-        // Pre-emptively create THREE.Geometry stub before proto.js tries to use it
-        THREE.Geometry = function() {
-            // Empty constructor - functions will be modernized to use BufferGeometry
-            this.vertices = [];
-            this.faces = [];
-            this.colors = [];
+        // Override THREE constructors to ensure they have event methods if needed
+        const wrapConstructor = function(originalConstructor) {
+            return function(...args) {
+                const instance = new originalConstructor(...args);
+                return ensureEventTarget(instance);
+            };
         };
 
-        // Pre-emptively create THREE.Face3 stub before proto.js tries to use it
-        THREE.Face3 = function(a, b, c, normal, colors) {
-            // Empty constructor - functions will be modernized to use BufferGeometry
-            this.a = a;
-            this.b = b;
-            this.c = c;
-            this.normal = normal || new THREE.Vector3();
-            this.vertexColors = colors || [];
+        // Store original constructors before overriding
+        window._originalTHREE = {
+            Scene: THREE.Scene,
+            PerspectiveCamera: THREE.PerspectiveCamera,
+            Object3D: THREE.Object3D,
+            Mesh: THREE.Mesh,
+            Group: THREE.Group
+        };
+
+        // Override critical Three.js constructors to ensure they don't cause addEventListener errors
+        ['Scene', 'PerspectiveCamera', 'Object3D', 'Mesh', 'Group', 'Material', 'MeshLambertMaterial', 'MeshBasicMaterial', 'LineBasicMaterial', 'BufferGeometry', 'Geometry'].forEach(className => {
+            if (THREE[className]) {
+                const OriginalClass = THREE[className];
+                THREE[className] = function(...args) {
+                    const instance = new OriginalClass(...args);
+                    return ensureEventTarget(instance);
+                };
+                // Copy prototype and static properties
+                THREE[className].prototype = OriginalClass.prototype;
+                Object.setPrototypeOf(THREE[className], OriginalClass);
+            }
+        });
+
+        // Global addEventListener patch - intercept all addEventListener calls
+        const originalAddEventListener = EventTarget.prototype.addEventListener;
+
+        // Create a safer addEventListener that handles non-EventTarget objects
+        window.safeAddEventListener = function(target, type, listener, options) {
+            try {
+                // Check if target is a proper EventTarget
+                if (target && typeof target.addEventListener === 'function' && target instanceof EventTarget) {
+                    return originalAddEventListener.call(target, type, listener, options);
+                } else if (target && typeof target.addEventListener === 'function') {
+                    // Object has addEventListener but isn't EventTarget - call it anyway
+                    return target.addEventListener(type, listener, options);
+                } else {
+                    // Object doesn't support events - log and ignore
+                    console.warn('Attempted to add event listener to non-EventTarget object:', target);
+                    return;
+                }
+            } catch (error) {
+                console.warn('addEventListener failed:', error, 'Target:', target);
+                return;
+            }
+        };
+
+        // Patch Three.js objects that might be passed to addEventListener
+        const patchThreeJSObject = function(obj) {
+            if (obj && typeof obj === 'object' && !obj.addEventListener) {
+                Object.defineProperty(obj, 'addEventListener', {
+                    value: function(type, listener, options) {
+                        console.log(`Stubbed addEventListener on Three.js object for event: ${type}`);
+                        return;
+                    },
+                    writable: false,
+                    enumerable: false,
+                    configurable: true
+                });
+                Object.defineProperty(obj, 'removeEventListener', {
+                    value: function(type, listener, options) {
+                        console.log(`Stubbed removeEventListener on Three.js object for event: ${type}`);
+                        return;
+                    },
+                    writable: false,
+                    enumerable: false,
+                    configurable: true
+                });
+                Object.defineProperty(obj, 'dispatchEvent', {
+                    value: function(event) {
+                        console.log(`Stubbed dispatchEvent on Three.js object for event:`, event);
+                        return true;
+                    },
+                    writable: false,
+                    enumerable: false,
+                    configurable: true
+                });
+            }
+            return obj;
+        };
+
+        // Simplified approach for r121 - just patch objects when they're created
+        const originalSceneAdd = THREE.Scene.prototype.add;
+        THREE.Scene.prototype.add = function(...objects) {
+            objects.forEach(patchThreeJSObject);
+            return originalSceneAdd.apply(this, objects);
         };
 
         // Override proto.js initialization after it loads
         window.addEventListener('load', function() {
             setTimeout(function() {
-                // 1. Fix renderer initialization
+                console.log('Applying additional Three.js r128 compatibility fixes...');
+
+                // 1. Fix renderer initialization if it wasn't caught by our override
                 if (typeof renderer !== 'undefined' && renderer && renderer.setFaceCulling) {
-                    // Remove deprecated setFaceCulling call - modern Three.js handles this automatically
-                    renderer.setFaceCulling = function() { return this; };
+                    renderer.setFaceCulling = function() {
+                        console.log('setFaceCulling called on renderer (deprecated in r128)');
+                        return this;
+                    };
                 }
 
-                // 2. Replace projector with modern Raycaster
-                window.raycaster = new THREE.Raycaster();
+                // 2. Replace projector with modern Raycaster (backup in case proto.js creates its own)
+                if (typeof projector !== 'undefined' && !window.raycaster) {
+                    window.raycaster = new THREE.Raycaster();
+                }
 
-                // Override the projector variable and its usage
-                window.projector = {
-                    pickingRay: function(vector, camera) {
-                        // Convert old pickingRay method to modern setFromCamera
-                        raycaster.setFromCamera(vector, camera);
-                        return raycaster;
-                    },
-                    unprojectVector: function(vector, camera) {
-                        return vector.unproject(camera);
+                // Override the projector variable and its usage (backup)
+                if (typeof projector !== 'undefined') {
+                    window.projector = {
+                        pickingRay: function(vector, camera) {
+                            if (!window.raycaster) {
+                                window.raycaster = new THREE.Raycaster();
+                            }
+                            window.raycaster.setFromCamera(vector, camera);
+                            return window.raycaster;
+                        },
+                        unprojectVector: function(vector, camera) {
+                            return vector.unproject(camera);
+                        },
+                        projectVector: function(vector, camera) {
+                            return vector.project(camera);
+                        }
+                    };
+                }
+
+                // 3. Fix THREE.Plane.projectPoint() target parameter requirement
+                const originalPlaneProjectPoint = THREE.Plane.prototype.projectPoint;
+                THREE.Plane.prototype.projectPoint = function(point, target) {
+                    // If no target provided, create one (required in modern Three.js)
+                    if (!target) {
+                        target = new THREE.Vector3();
                     }
+                    return originalPlaneProjectPoint.call(this, point, target);
                 };
 
-                // 3. Override buildSurfaceRenderObject with modern BufferGeometry version
-                if (typeof buildSurfaceRenderObject !== 'undefined') {
-                    window.buildSurfaceRenderObject = function(tiles, random, action) {
-                        console.log('Using modern BufferGeometry implementation');
+                // Let proto.js use its original geometry functions if possible in r121
+                // Only override if absolutely necessary for compatibility
 
-                        const vertices = [];
-                        const normals = [];
-                        const colors = [];
-                        const indices = [];
-
-                        let vertexIndex = 0;
-
-                        const terrainColors = [];
-                        const plateColors = [];
-                        const elevationColors = [];
-                        const temperatureColors = [];
-                        const moistureColors = [];
-
-                        let i = 0;
-                        action.executeSubaction(function(action) {
-                            if (i >= tiles.length) return;
-
-                            const tile = tiles[i];
-
-                            // Calculate colors (same logic as original)
-                            const colorDeviance = new THREE.Color(random.unit(), random.unit(), random.unit());
-                            let terrainColor;
-
-                            if (tile.elevation <= 0) {
-                                if (tile.biome === "ocean") terrainColor = new THREE.Color(0x0066FF).lerp(new THREE.Color(0x0044BB), Math.min(-tile.elevation, 1)).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "oceanGlacier") terrainColor = new THREE.Color(0xDDEEFF).lerp(colorDeviance, 0.10);
-                                else terrainColor = new THREE.Color(0xFF00FF);
-                            } else if (tile.elevation < 0.6) {
-                                const normalizedElevation = tile.elevation / 0.6;
-                                if (tile.biome === "desert") terrainColor = new THREE.Color(0xDDDD77).lerp(new THREE.Color(0xBBBB55), normalizedElevation).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "rainForest") terrainColor = new THREE.Color(0x44DD00).lerp(new THREE.Color(0x229900), normalizedElevation).lerp(colorDeviance, 0.20);
-                                else if (tile.biome === "rocky") terrainColor = new THREE.Color(0xAA9977).lerp(new THREE.Color(0x887755), normalizedElevation).lerp(colorDeviance, 0.15);
-                                else if (tile.biome === "plains") terrainColor = new THREE.Color(0x99BB44).lerp(new THREE.Color(0x667722), normalizedElevation).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "grassland") terrainColor = new THREE.Color(0x77CC44).lerp(new THREE.Color(0x448822), normalizedElevation).lerp(colorDeviance, 0.15);
-                                else if (tile.biome === "swamp") terrainColor = new THREE.Color(0x77AA44).lerp(new THREE.Color(0x446622), normalizedElevation).lerp(colorDeviance, 0.25);
-                                else if (tile.biome === "deciduousForest") terrainColor = new THREE.Color(0x33AA22).lerp(new THREE.Color(0x116600), normalizedElevation).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "tundra") terrainColor = new THREE.Color(0x9999AA).lerp(new THREE.Color(0x777788), normalizedElevation).lerp(colorDeviance, 0.15);
-                                else if (tile.biome === "landGlacier") terrainColor = new THREE.Color(0xDDEEFF).lerp(colorDeviance, 0.10);
-                                else terrainColor = new THREE.Color(0xFF00FF);
-                            } else if (tile.elevation < 0.8) {
-                                const normalizedElevation = (tile.elevation - 0.6) / 0.2;
-                                if (tile.biome === "tundra") terrainColor = new THREE.Color(0x777788).lerp(new THREE.Color(0x666677), normalizedElevation).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "coniferForest") terrainColor = new THREE.Color(0x338822).lerp(new THREE.Color(0x116600), normalizedElevation).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "snow") terrainColor = new THREE.Color(0xEEEEEE).lerp(new THREE.Color(0xDDDDDD), normalizedElevation).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "mountain") terrainColor = new THREE.Color(0x555544).lerp(new THREE.Color(0x444433), normalizedElevation).lerp(colorDeviance, 0.05);
-                                else terrainColor = new THREE.Color(0xFF00FF);
-                            } else {
-                                const normalizedElevation = (tile.elevation - 0.8) / 0.2;
-                                if (tile.biome === "snow") terrainColor = new THREE.Color(0xEEEEEE).lerp(new THREE.Color(0xDDDDDD), normalizedElevation).lerp(colorDeviance, 0.10);
-                                else if (tile.biome === "mountain") terrainColor = new THREE.Color(0x444433).lerp(new THREE.Color(0x333322), normalizedElevation).lerp(colorDeviance, 0.05);
-                                else terrainColor = new THREE.Color(0xFF00FF);
-                            }
-
-                            // Create tile geometry (simplified for BufferGeometry)
-                            const baseIndex = vertexIndex;
-
-                            // Add center vertex
-                            const center = tile.averagePosition;
-                            vertices.push(center.x, center.y, center.z);
-                            normals.push(tile.normal.x, tile.normal.y, tile.normal.z);
-                            colors.push(terrainColor.r, terrainColor.g, terrainColor.b);
-                            vertexIndex++;
-
-                            // Add corner vertices and create triangles
-                            for (let j = 0; j < tile.corners.length; j++) {
-                                const corner1 = tile.corners[j].position;
-                                const corner2 = tile.corners[(j + 1) % tile.corners.length].position;
-
-                                // Add corner vertices
-                                vertices.push(corner1.x, corner1.y, corner1.z);
-                                normals.push(tile.normal.x, tile.normal.y, tile.normal.z);
-                                colors.push(terrainColor.r, terrainColor.g, terrainColor.b);
-
-                                vertices.push(corner2.x, corner2.y, corner2.z);
-                                normals.push(tile.normal.x, tile.normal.y, tile.normal.z);
-                                colors.push(terrainColor.r, terrainColor.g, terrainColor.b);
-
-                                // Create triangle (center, corner1, corner2)
-                                indices.push(baseIndex, vertexIndex, vertexIndex + 1);
-
-                                vertexIndex += 2;
-                            }
-
-                            ++i;
-                            action.loop(i / tiles.length);
-                        });
-
-                        // Create modern BufferGeometry
-                        const planetGeometry = new THREE.BufferGeometry();
-                        planetGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                        planetGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-                        planetGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                        planetGeometry.setIndex(indices);
-
-                        planetGeometry.computeBoundingSphere();
-
-                        // Create modern material (without deprecated 'ambient' property)
-                        const planetMaterial = new THREE.MeshLambertMaterial({
-                            vertexColors: true  // Modern Three.js uses boolean, not THREE.VertexColors
-                        });
-
-                        const planetRenderObject = new THREE.Mesh(planetGeometry, planetMaterial);
-
-                        action.provideResult({
-                            geometry: planetGeometry,
-                            terrainColors: terrainColors,
-                            plateColors: plateColors,
-                            elevationColors: elevationColors,
-                            temperatureColors: temperatureColors,
-                            moistureColors: moistureColors,
-                            object: planetRenderObject
-                        });
-                    };
-                }
-
-                // 4. Override buildPlateBoundariesRenderObject with modern BufferGeometry
-                if (typeof buildPlateBoundariesRenderObject !== 'undefined') {
-                    window.buildPlateBoundariesRenderObject = function(borders, action) {
-                        console.log('Using modern BufferGeometry for plate boundaries');
-
-                        const vertices = [];
-                        const colors = [];
-
-                        let i = 0;
-                        action.executeSubaction(function(action) {
-                            if (i >= borders.length) return;
-
-                            const border = borders[i];
-
-                            // Add line vertices
-                            vertices.push(border.corners[0].position.x, border.corners[0].position.y, border.corners[0].position.z);
-                            vertices.push(border.corners[1].position.x, border.corners[1].position.y, border.corners[1].position.z);
-
-                            // Add colors (white lines for plate boundaries)
-                            colors.push(1, 1, 1, 1, 1, 1);
-
-                            ++i;
-                            action.loop(i / borders.length);
-                        });
-
-                        const geometry = new THREE.BufferGeometry();
-                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-                        const material = new THREE.LineBasicMaterial({ vertexColors: true });
-                        const object = new THREE.LineSegments(geometry, material);
-
-                        action.provideResult(object);
-                    };
-                }
-
-                // 5. Override buildPlateMovementsRenderObject with modern BufferGeometry
-                if (typeof buildPlateMovementsRenderObject !== 'undefined') {
-                    window.buildPlateMovementsRenderObject = function(tiles, action) {
-                        console.log('Using modern BufferGeometry for plate movements');
-
-                        const vertices = [];
-                        const colors = [];
-
-                        let i = 0;
-                        action.executeSubaction(function(action) {
-                            if (i >= tiles.length) return;
-
-                            const tile = tiles[i];
-
-                            if (tile.plateMovement && tile.plateMovement.length() > 0.01) {
-                                const start = tile.averagePosition;
-                                const end = start.clone().add(tile.plateMovement.clone().multiplyScalar(10));
-
-                                vertices.push(start.x, start.y, start.z);
-                                vertices.push(end.x, end.y, end.z);
-
-                                // Color based on movement speed
-                                const speed = tile.plateMovement.length();
-                                colors.push(speed, 0, 1 - speed, speed, 0, 1 - speed);
-                            }
-
-                            ++i;
-                            action.loop(i / tiles.length);
-                        });
-
-                        const geometry = new THREE.BufferGeometry();
-                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-                        const material = new THREE.LineBasicMaterial({ vertexColors: true });
-                        const object = new THREE.LineSegments(geometry, material);
-
-                        action.provideResult(object);
-                    };
-                }
-
-                // 6. Override buildAirCurrentsRenderObject with modern BufferGeometry
-                if (typeof buildAirCurrentsRenderObject !== 'undefined') {
-                    window.buildAirCurrentsRenderObject = function(corners, action) {
-                        console.log('Using modern BufferGeometry for air currents');
-
-                        const vertices = [];
-                        const colors = [];
-
-                        let i = 0;
-                        action.executeSubaction(function(action) {
-                            if (i >= corners.length) return;
-
-                            const corner = corners[i];
-
-                            if (corner.airCurrent && corner.airCurrent.length() > 0.01) {
-                                const start = corner.position;
-                                const end = start.clone().add(corner.airCurrent.clone().multiplyScalar(5));
-
-                                vertices.push(start.x, start.y, start.z);
-                                vertices.push(end.x, end.y, end.z);
-
-                                // Blue color for air currents
-                                colors.push(0, 0.5, 1, 0, 0.5, 1);
-                            }
-
-                            ++i;
-                            action.loop(i / corners.length);
-                        });
-
-                        const geometry = new THREE.BufferGeometry();
-                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-                        const material = new THREE.LineBasicMaterial({ vertexColors: true });
-                        const object = new THREE.LineSegments(geometry, material);
-
-                        action.provideResult(object);
-                    };
-                }
-
-                // 7. Override selectTile function with modern BufferGeometry
-                if (typeof selectTile !== 'undefined') {
-                    const originalSelectTile = window.selectTile;
-                    window.selectTile = function(tile) {
-                        if (tileSelection !== null) {
-                            if (tileSelection.tile === tile) return;
-                            deselectTile();
-                        }
-
-                        console.log(tile);
-
-                        const outerColor = new THREE.Color(0x000000);
-                        const innerColor = new THREE.Color(0xFFFFFF);
-
-                        // Create modern BufferGeometry for tile selection
-                        const vertices = [];
-                        const colors = [];
-                        const indices = [];
-
-                        // Add center vertex
-                        vertices.push(tile.averagePosition.x, tile.averagePosition.y, tile.averagePosition.z);
-                        colors.push(innerColor.r, innerColor.g, innerColor.b);
-
-                        // Add corner vertices
-                        for (let i = 0; i < tile.corners.length; i++) {
-                            const corner = tile.corners[i].position;
-                            vertices.push(corner.x, corner.y, corner.z);
-                            colors.push(outerColor.r, outerColor.g, outerColor.b);
-
-                            // Create triangle indices (center, current corner, next corner)
-                            const nextIndex = (i + 1) % tile.corners.length + 1;
-                            indices.push(0, i + 1, nextIndex);
-                        }
-
-                        const geometry = new THREE.BufferGeometry();
-                        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                        geometry.setIndex(indices);
-                        geometry.computeBoundingSphere();
-
-                        const material = new THREE.MeshLambertMaterial({
-                            vertexColors: true,
-                            transparent: true,
-                            opacity: 0.5,
-                            polygonOffset: true,
-                            polygonOffsetFactor: -2,
-                            polygonOffsetUnits: -2
-                        });
-
-                        const object = new THREE.Mesh(geometry, material);
-                        scene.add(object);
-
-                        tileSelection = {
-                            tile: tile,
-                            object: object
-                        };
-                    };
-                }
-
-                // 8. Override helper functions that use THREE.Face3
-                window.buildArrow = function(geometry, position, direction, normal, baseWidth, color) {
-                    // Modern implementation would be part of BufferGeometry building
-                    // This is a stub since we've modernized the calling functions
-                    console.log('buildArrow called (modernized version handles this in BufferGeometry)');
-                };
-
-                window.buildTileWedge = function(f, b, s, t, n) {
-                    // Modern implementation would be part of BufferGeometry building
-                    // This is a stub since we've modernized the calling functions
-                    console.log('buildTileWedge called (modernized version handles this in BufferGeometry)');
-                };
-
-                window.buildTileWedgeColors = function(f, c, bc) {
-                    // Modern implementation would be part of BufferGeometry building
-                    // This is a stub since we've modernized the calling functions
-                    console.log('buildTileWedgeColors called (modernized version handles this in BufferGeometry)');
-                };
+                console.log('Three.js r121 should support legacy geometry APIs - minimal overrides only');
 
                 console.log('Modern Three.js overrides applied');
             }, 500); // Wait a bit longer for proto.js to fully load

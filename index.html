@@ -127,7 +127,7 @@
         <!-- Terrain Tab -->
         <div id="tab-terrain-content" class="tab-content">
         <label>Tile density (detail): <span class="value" id="detailValue">15</span></label>
-        <input type="range" id="detail" min="0" max="20" step="1" value="15" />
+        <input type="range" id="detail" min="0" max="50" step="1" value="9" />
             <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">6</span></label>
             <input type="range" id="continents" min="3" max="24" step="1" value="6" />
         <label style="margin-top:10px">Sea level: <span class="value" id="seaValue">0.80</span></label>
@@ -722,10 +722,798 @@
     </script>
 
     <script>
+        // --- Store UI ---
+        const storePanel = document.createElement('div');
+        storePanel.id = 'store-panel';
+        storePanel.style.position = 'fixed';
+        storePanel.style.right = '16px';
+        storePanel.style.top = '16px';
+        storePanel.style.width = '220px';
+        storePanel.style.background = 'rgba(0,0,0,0.5)';
+        storePanel.style.color = '#fff';
+        storePanel.style.padding = '12px';
+        storePanel.style.borderRadius = '8px';
+        storePanel.style.fontFamily = 'sans-serif';
+        storePanel.style.zIndex = '1000';
+        storePanel.innerHTML = `
+            <div style="font-weight:700;margin-bottom:8px;">Store (Mock)</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                <div style="width:48px;height:48px;background:#222;border:1px solid #555;display:flex;align-items:center;justify-content:center;border-radius:4px;">Stalls</div>
+                <button id="btn-place-stalls" style="flex:1;padding:6px 8px;cursor:pointer;">Place Stalls</button>
+                <button id="btn-browse-stalls" title="Load local GLB" style="padding:6px 8px;cursor:pointer;">Browse…</button>
+            </div>
+            <div style="font-size:12px;color:#ccc;line-height:1.3;">
+                - Click "Place Stalls", hover a tile to preview, click tile to place.<br/>
+                - Press Esc to cancel.
+            </div>
+            <div id="store-panel-error" style="margin-top:8px;color:#ff8888;font-size:12px;"></div>
+        `;
+        document.body.appendChild(storePanel);
+
+        // --- Context Menu ---
+        const contextMenu = document.createElement('div');
+        contextMenu.id = 'context-menu';
+        contextMenu.style.position = 'fixed';
+        contextMenu.style.display = 'none';
+        contextMenu.style.background = 'rgba(0,0,0,0.8)';
+        contextMenu.style.border = '1px solid #444';
+        contextMenu.style.borderRadius = '4px';
+        contextMenu.style.padding = '4px 0';
+        contextMenu.style.minWidth = '120px';
+        contextMenu.style.zIndex = '1000';
+        contextMenu.style.fontSize = '14px';
+        contextMenu.style.color = '#fff';
+        contextMenu.innerHTML = `
+            <div class="context-menu-item" id="context-move-here" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #444;">Move Here</div>
+            <div class="context-menu-item" id="context-cancel" style="padding:8px 12px;cursor:pointer;">Cancel</div>
+        `;
+        document.body.appendChild(contextMenu);
+
+        const hiddenFile = document.createElement('input');
+        hiddenFile.type = 'file';
+        hiddenFile.accept = '.glb,.gltf,model/gltf-binary,model/gltf+json';
+        hiddenFile.style.display = 'none';
+        document.body.appendChild(hiddenFile);
+
+        document.getElementById('btn-place-stalls').addEventListener('click', async () => {
+            await ensureStallsLoaded();
+            enterPlacementMode('stalls');
+        });
+        document.getElementById('btn-browse-stalls').addEventListener('click', () => hiddenFile.click());
+        hiddenFile.addEventListener('change', async (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            try {
+                const loader = new THREE.GLTFLoader();
+                loader.load(url, (gltf) => {
+                    stallsPrototype = gltf.scene;
+                    stallsPrototype.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; if (!(n.material instanceof THREE.MeshPhongMaterial)) { n.material = new THREE.MeshPhongMaterial({ color: 0xffffff }); }}});
+                    const msg = document.getElementById('store-panel-error');
+                    if (msg) msg.textContent = '';
+                    createPlacementGhost();
+                }, undefined, (err) => {
+                    console.error('Failed to load local GLB', err);
+                    const msg = document.getElementById('store-panel-error');
+                    if (msg) msg.textContent = 'Failed to load selected GLB.';
+                });
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                exitPlacementMode();
+                hideContextMenu();
+            }
+        });
+
+        async function ensureStallsLoaded() {
+            if (stallsPrototype) return;
+            const loader = new THREE.GLTFLoader();
+
+            // Build candidate list from settings to make path obvious and editable
+            const baseHref = window.location.href.replace(/[#?].*$/, '');
+            const pageDir = baseHref.replace(/[^\/]*$/, ''); // strip filename
+            const primary = settings.stallsModelPath || 'Models/market-stalls.glb';
+            const candidates = [
+                primary,
+                './' + primary,
+                pageDir + primary,
+                '/' + primary.replace(/^\/*/, '')
+            ];
+
+            console.log('Stalls loader candidates:', candidates);
+            for (let i = 0; i < candidates.length; i++) {
+                const url = candidates[i];
+                // Try loading directly; on error, try next
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise((resolve) => {
+                    loader.load(url, (gltf) => {
+                        stallsPrototype = gltf.scene;
+                        stallsPrototype.traverse(n => {
+                            if (n.isMesh) {
+                                n.castShadow = true; n.receiveShadow = true;
+                                // Ensure sRGB on color textures for r128
+                                if (n.material && n.material.map && THREE.sRGBEncoding) {
+                                    n.material.map.encoding = THREE.sRGBEncoding;
+                                    n.material.needsUpdate = true;
+                                }
+                                if (n.material && n.material.emissiveMap && THREE.sRGBEncoding) {
+                                    n.material.emissiveMap.encoding = THREE.sRGBEncoding;
+                                    n.material.needsUpdate = true;
+                                }
+                            }
+                        });
+                        console.log('Loaded stalls model from', url);
+                        resolve();
+                    }, undefined, (err) => {
+                        console.warn('Failed stalls candidate:', url, err);
+                        resolve(); // try next
+                    });
+                });
+                if (stallsPrototype) break;
+            }
+
+            if (!stallsPrototype) {
+                console.error('All stalls paths failed, using fallback cube');
+                const msg = document.getElementById('store-panel-error');
+                if (msg) {
+                    msg.textContent = 'Could not load stalls model; using fallback cube.';
+                }
+                const g = new THREE.BoxGeometry(0.3,0.3,0.3);
+                const m = new THREE.MeshPhongMaterial({ color: 0xffaa00 });
+                stallsPrototype = new THREE.Mesh(g,m);
+            }
+        }
+
+        function enterPlacementMode(type) {
+            placementState.active = true;
+            placementState.type = type;
+            createPlacementGhost();
+        }
+
+        function exitPlacementMode() {
+            placementState.active = false;
+            placementState.type = null;
+            if (placementGhost) { scene.remove(placementGhost); placementGhost = null; }
+        }
+
+        function createPlacementGhost() {
+            if (placementGhost) { scene.remove(placementGhost); placementGhost = null; }
+            let proto = null;
+            if (placementState.type === 'stalls') proto = stallsPrototype;
+            if (!proto) return;
+            placementGhost = proto.clone(true);
+            placementGhost.traverse(n => { if (n.material) { n.material = n.material.clone(); n.material.transparent = true; n.material.opacity = 0.6; } });
+            placementGhost.renderOrder = 998;
+            scene.add(placementGhost);
+        }
+
+        function updatePlacementGhost() {
+            if (!placementState.active || !placementGhost || !hoveredTile) return;
+            const d = hoveredTile.userData.debugData;
+            const pos = d.tileCenter.clone();
+            const n = d.tileNormal.clone();
+            placementGhost.position.copy(pos.clone().add(n.clone().multiplyScalar(0.22)));
+            const up = new THREE.Vector3(0,1,0);
+            const q = new THREE.Quaternion().setFromUnitVectors(up, n);
+            placementGhost.setRotationFromQuaternion(q);
+            placementGhost.scale.set(0.3,0.3,0.3);
+        }
+
+        function placeStructureOnTile(tile) {
+            if (!placementState.active) return;
+            let proto = null;
+            if (placementState.type === 'stalls') proto = stallsPrototype;
+            if (!proto || !tile) return;
+            const d = tile.userData.debugData;
+            const inst = proto.clone(true);
+            const pos = d.tileCenter.clone();
+            const n = d.tileNormal.clone();
+            inst.position.copy(pos.clone().add(n.clone().multiplyScalar(0.22)));
+            const up = new THREE.Vector3(0,1,0);
+            const q = new THREE.Quaternion().setFromUnitVectors(up, n);
+            inst.setRotationFromQuaternion(q);
+            inst.scale.set(0.3,0.3,0.3);
+            structuresGroup.add(inst);
+            exitPlacementMode();
+        }
+
+        // Sailboat and shipping port loading system
+        let sailboatPrototype = null;
+        let fishingboatPrototype = null;
+
+        async function ensureSailboatLoaded() {
+            if (sailboatPrototype) return;
+            const loader = new THREE.GLTFLoader();
+
+            const baseHref = window.location.href.replace(/[#?].*$/, '');
+            const pageDir = baseHref.replace(/[^\/]*$/, '');
+            const primary = 'Models/sailboat/sailboat.glb';
+            const candidates = [
+                primary,
+                './' + primary,
+                pageDir + primary,
+                '/' + primary.replace(/^\/*/, '')
+            ];
+
+            console.log('Sailboat loader candidates:', candidates);
+            for (let i = 0; i < candidates.length; i++) {
+                const url = candidates[i];
+                await new Promise((resolve) => {
+                    loader.load(url, (gltf) => {
+                        sailboatPrototype = gltf.scene;
+                        sailboatPrototype.traverse(n => {
+                            if (n.isMesh) {
+                                n.castShadow = true;
+                                n.receiveShadow = true;
+                            }
+                        });
+                        console.log(`Sailboat loaded successfully from: ${url}`);
+                        resolve();
+                    }, (progress) => {
+                        // Loading progress - no action needed
+                    }, (error) => {
+                        console.warn(`Sailboat load failed for ${url}:`, error);
+                        resolve();
+                    });
+                });
+                if (sailboatPrototype) break;
+            }
+
+            if (!sailboatPrototype) {
+                console.warn('Failed to load sailboat GLB, using fallback cube');
+                const cubeGeometry = new THREE.BoxGeometry(0.3, 0.1, 0.5);
+                const cubeMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                sailboatPrototype = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            }
+        }
+
+        async function ensureFishingboatLoaded() {
+            if (fishingboatPrototype) return;
+            const loader = new THREE.GLTFLoader();
+
+            const baseHref = window.location.href.replace(/[#?].*$/, '');
+            const pageDir = baseHref.replace(/[^\/]*$/, '');
+            const primary = 'Models/fishingboat/fishingboat.glb';
+            const candidates = [
+                primary,
+                './' + primary,
+                pageDir + primary,
+                '/' + primary.replace(/^\/*/, '')
+            ];
+
+            console.log('Fishing boat loader candidates:', candidates);
+            for (let i = 0; i < candidates.length; i++) {
+                const url = candidates[i];
+                await new Promise((resolve) => {
+                    loader.load(url, (gltf) => {
+                        fishingboatPrototype = gltf.scene;
+                        fishingboatPrototype.traverse(n => {
+                            if (n.isMesh) {
+                                n.castShadow = true;
+                                n.receiveShadow = true;
+                            }
+                        });
+                        console.log(`Fishing boat loaded successfully from: ${url}`);
+                        resolve();
+                    }, (progress) => {
+                        // Loading progress - no action needed
+                    }, (error) => {
+                        console.warn(`Fishing boat load failed for ${url}:`, error);
+                        resolve();
+                    });
+                });
+                if (fishingboatPrototype) break;
+            }
+
+            if (!fishingboatPrototype) {
+                console.warn('Failed to load fishing boat GLB, using fallback cube');
+                const cubeGeometry = new THREE.BoxGeometry(0.4, 0.15, 0.8);
+                const cubeMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                fishingboatPrototype = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            }
+        }
+
+        async function ensurePortLoaded() {
+            if (portPrototype) return;
+            const loader = new THREE.GLTFLoader();
+
+            const baseHref = window.location.href.replace(/[#?].*$/, '');
+            const pageDir = baseHref.replace(/[^\/]*$/, '');
+            const primary = settings.portModelPath || 'Models/shipping-port-low-poly/shipping-port-low-poly.glb';
+            const candidates = [
+                primary,
+                './' + primary,
+                pageDir + primary,
+                '/' + primary.replace(/^\/*/, '')
+            ];
+
+            console.log('Port loader candidates:', candidates);
+            for (let i = 0; i < candidates.length; i++) {
+                const url = candidates[i];
+                await new Promise((resolve) => {
+                    loader.load(url, (gltf) => {
+                        portPrototype = gltf.scene;
+                        portPrototype.traverse(n => {
+                            if (n.isMesh) {
+                                n.castShadow = true;
+                                n.receiveShadow = true;
+                                if (n.material && n.material.map && THREE.sRGBEncoding) {
+                                    n.material.map.encoding = THREE.sRGBEncoding;
+                                    n.material.needsUpdate = true;
+                                }
+                                if (n.material && n.material.emissiveMap && THREE.sRGBEncoding) {
+                                    n.material.emissiveMap.encoding = THREE.sRGBEncoding;
+                                    n.material.needsUpdate = true;
+                                }
+                            }
+                        });
+                        console.log('Loaded port model from', url);
+                        resolve();
+                    }, undefined, (err) => {
+                        console.warn('Failed port candidate:', url, err);
+                        resolve();
+                    });
+                });
+                if (portPrototype) break;
+            }
+
+            if (!portPrototype) {
+                console.error('All port paths failed, using fallback cube');
+                const g = new THREE.BoxGeometry(0.4, 0.2, 0.6);
+                const m = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
+                portPrototype = new THREE.Mesh(g, m);
+            }
+        }
+
+        function identifyLandmasses() {
+            console.log('Identifying landmasses...');
+            const landTiles = new Map();
+            const visited = new Set();
+            const landmasses = [];
+
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData) {
+                    const biomeType = child.userData.debugData.biomeType;
+                    if (biomeType !== 'ocean') {
+                        landTiles.set(child.userData.tileId, child);
+                    }
+                }
+            });
+
+            console.log(`Found ${landTiles.size} land tiles`);
+
+            function exploreLandmass(startTileId) {
+                const landmass = [];
+                const stack = [startTileId];
+
+                while (stack.length > 0) {
+                    const currentId = stack.pop();
+                    if (visited.has(currentId)) continue;
+
+                    visited.add(currentId);
+                    const tile = landTiles.get(currentId);
+                    if (!tile) continue;
+
+                    landmass.push(tile);
+
+                    const neighbors = tile.userData.debugData.neighbors || [];
+                    for (const neighborId of neighbors) {
+                        if (!visited.has(neighborId) && landTiles.has(neighborId)) {
+                            stack.push(neighborId);
+                        }
+                    }
+                }
+
+                return landmass;
+            }
+
+            for (const [tileId, tile] of landTiles) {
+                if (!visited.has(tileId)) {
+                    const landmass = exploreLandmass(tileId);
+                    if (landmass.length > 0) {
+                        landmasses.push(landmass);
+                    }
+                }
+            }
+
+            console.log(`Identified ${landmasses.length} landmasses with sizes:`, landmasses.map(lm => lm.length));
+            return landmasses;
+        }
+
+        function identifyWaterBodies() {
+            console.log('Identifying water bodies...');
+            const waterTiles = new Map();
+            const visited = new Set();
+            const waterBodies = [];
+
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile && child.userData.debugData) {
+                    const biomeType = child.userData.debugData.biomeType;
+                    if (biomeType === 'ocean') {
+                        waterTiles.set(child.userData.tileId, child);
+                    }
+                }
+            });
+
+            console.log(`Found ${waterTiles.size} water tiles`);
+
+            function exploreWaterBody(startTileId) {
+                const waterBody = [];
+                const stack = [startTileId];
+
+                while (stack.length > 0) {
+                    const currentId = stack.pop();
+                    if (visited.has(currentId)) continue;
+
+                    visited.add(currentId);
+                    const tile = waterTiles.get(currentId);
+                    if (!tile) continue;
+
+                    waterBody.push(tile);
+
+                    const neighbors = tile.userData.debugData.neighbors || [];
+                    for (const neighborId of neighbors) {
+                        if (!visited.has(neighborId) && waterTiles.has(neighborId)) {
+                            stack.push(neighborId);
+                        }
+                    }
+                }
+
+                return waterBody;
+            }
+
+            for (const [tileId, tile] of waterTiles) {
+                if (!visited.has(tileId)) {
+                    const waterBody = exploreWaterBody(tileId);
+                    if (waterBody.length >= 4) { // Filter out small water bodies
+                        waterBodies.push(waterBody);
+                    }
+                }
+            }
+
+            console.log(`Identified ${waterBodies.length} large water bodies (4+ tiles) with sizes:`, waterBodies.map(wb => wb.length));
+            return waterBodies;
+        }
+
+        function findPortSites(landmasses, waterBodies) {
+            console.log('Finding port sites...');
+            const largeWaterTiles = new Set();
+
+            // Create a set of all tiles in large water bodies
+            waterBodies.forEach(waterBody => {
+                waterBody.forEach(tile => {
+                    largeWaterTiles.add(tile.userData.tileId);
+                });
+            });
+
+            const portSites = [];
+
+            landmasses.forEach((landmass, landmassIndex) => {
+                const candidateWaterTiles = [];
+
+                // For each land tile in this landmass, check its water neighbors
+                landmass.forEach(landTile => {
+                    const neighbors = landTile.userData.debugData.neighbors || [];
+                    neighbors.forEach(neighborId => {
+                        if (largeWaterTiles.has(neighborId)) {
+                            // Find the actual water tile
+                            scene.traverse((child) => {
+                                if (child.userData && child.userData.tileId === neighborId) {
+                                    candidateWaterTiles.push({
+                                        waterTile: child,
+                                        adjacentLandTile: landTile,
+                                        landmassIndex: landmassIndex
+                                    });
+                                }
+                            });
+                        }
+                    });
+                });
+
+                // Choose the best port site for this landmass
+                if (candidateWaterTiles.length > 0) {
+                    // Prefer water tiles that are closer to the center of the landmass
+                    let bestSite = candidateWaterTiles[0];
+                    let bestScore = -Infinity;
+
+                    candidateWaterTiles.forEach(site => {
+                        // Calculate average distance to all tiles in the landmass
+                        let totalDistance = 0;
+                        landmass.forEach(landTile => {
+                            const distance = site.waterTile.position.distanceTo(landTile.position);
+                            totalDistance += distance;
+                        });
+                        const avgDistance = totalDistance / landmass.length;
+                        const score = -avgDistance; // Lower distance is better
+
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestSite = site;
+                        }
+                    });
+
+                    portSites.push(bestSite);
+                }
+            });
+
+            console.log(`Found ${portSites.length} port sites for ${landmasses.length} landmasses`);
+            return portSites;
+        }
+
+        async function placeShippingPorts() {
+            console.log('Placing shipping ports...');
+
+            await ensurePortLoaded();
+
+            // Clear existing ports
+            portsGroup.clear();
+            shippingPorts.clear();
+
+            const landmasses = identifyLandmasses();
+            const waterBodies = identifyWaterBodies();
+            const portSites = findPortSites(landmasses, waterBodies);
+
+            portSites.forEach((site, index) => {
+                const waterTile = site.waterTile;
+                const landTile = site.adjacentLandTile;
+
+                if (!portPrototype) return;
+
+                const port = portPrototype.clone(true);
+                const waterPos = waterTile.userData.debugData.tileCenter.clone();
+                const waterNormal = waterTile.userData.debugData.tileNormal.clone();
+                const landPos = landTile.userData.debugData.tileCenter.clone();
+
+                // Calculate direction from water center to land center
+                const directionToLand = landPos.clone().sub(waterPos).normalize();
+
+                // Position port on edge of water tile, closer to the land
+                // Move the port 40% of the way from water center toward the land tile
+                const edgePosition = waterPos.clone().add(directionToLand.clone().multiplyScalar(0.4));
+                port.position.copy(edgePosition.add(waterNormal.clone().multiplyScalar(0.05)));
+
+                // Orient port to sit flat on the water tile AND face toward land
+                const up = new THREE.Vector3(0, 1, 0);
+
+                // First align with the surface normal (sit flat on tile)
+                const surfaceQuaternion = new THREE.Quaternion().setFromUnitVectors(up, waterNormal);
+
+                // Then rotate around the surface normal to face toward land
+                // Project direction to land onto the tile surface plane
+                const landDirection = directionToLand.clone();
+                const projectedLandDirection = landDirection.clone().sub(
+                    waterNormal.clone().multiplyScalar(landDirection.dot(waterNormal))
+                ).normalize();
+
+                // Create a rotation that aligns the port's forward direction with the land
+                // Assuming the port model's "forward" is along its local Z-axis
+                const modelForward = new THREE.Vector3(0, 0, 1);
+
+                // Create rotation matrix for the surface-aligned coordinate system
+                const rotationMatrix = new THREE.Matrix4();
+                rotationMatrix.lookAt(
+                    new THREE.Vector3(0, 0, 0),
+                    projectedLandDirection,
+                    waterNormal
+                );
+
+                const finalQuaternion = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
+                port.setRotationFromQuaternion(finalQuaternion);
+
+                // Scale the port appropriately
+                port.scale.set(0.15, 0.15, 0.15);
+
+                // Store port info and make the tile walkable
+                waterTile.userData.hasPort = true;
+                waterTile.userData.portLandmass = site.landmassIndex;
+                waterTile.userData.debugData.isWalkable = true;
+                waterTile.userData.debugData.movementCost = 1.0;
+
+                portsGroup.add(port);
+                shippingPorts.set(site.landmassIndex, {
+                    port: port,
+                    waterTile: waterTile,
+                    landTile: landTile,
+                    position: port.position.clone()
+                });
+
+                console.log(`Placed port ${index + 1} for landmass ${site.landmassIndex}`);
+            });
+
+            console.log(`Placed ${portSites.length} shipping ports total`);
+        }
+
+        // Port travel helper functions
+        function getCurrentLandmass() {
+            if (!playerCharacter || !playerCharacter.currentTileId) return null;
+
+            const currentTile = tileMap.get(playerCharacter.currentTileId);
+            if (!currentTile) return null;
+
+            // If standing on a port, return its landmass directly
+            if (currentTile.userData.hasPort) {
+                return currentTile.userData.portLandmass;
+            }
+
+            // Find which landmass the current tile belongs to
+            for (const [landmassId, portInfo] of shippingPorts) {
+                if (canReachPort(currentTile, portInfo.waterTile)) {
+                    return landmassId;
+                }
+            }
+            return null;
+        }
+
+        function canReachPort(fromTile, portTile) {
+            if (!pathfinder) return false;
+            const path = pathfinder.findPath(fromTile.userData.tileId, portTile.userData.tileId);
+            return path && path.length > 0;
+        }
+
+        function getAccessiblePorts() {
+            if (!playerCharacter) return [];
+
+            const currentLandmass = getCurrentLandmass();
+            if (currentLandmass === null) return [];
+
+            const accessiblePorts = [];
+
+            for (const [landmassId, portInfo] of shippingPorts) {
+                if (landmassId !== currentLandmass) {
+                    accessiblePorts.push({
+                        landmassId: landmassId,
+                        portTile: portInfo.waterTile,
+                        portInfo: portInfo
+                    });
+                }
+            }
+
+            return accessiblePorts;
+        }
+
+        function isPlayerOnPort() {
+            if (!playerCharacter || !playerCharacter.currentTileId) return false;
+            const currentTile = tileMap.get(playerCharacter.currentTileId);
+            return currentTile && currentTile.userData.hasPort;
+        }
+
+        // Context menu functions
+        function showContextMenu(event, tile) {
+            const contextMenu = document.getElementById('context-menu');
+            if (!contextMenu) return;
+
+            // Debug: context menu for tile
+
+            // Build context menu based on tile type and player state
+            let menuHTML = '';
+
+            // Regular move option (always available for walkable tiles)
+            if (tile.userData.debugData.isWalkable) {
+                menuHTML += `<div class="context-menu-item" id="context-move-here" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #444;">Move Here</div>`;
+            }
+
+            // Port-specific options
+            if (tile.userData.hasPort) {
+                const currentLandmass = getCurrentLandmass();
+                const targetLandmass = tile.userData.portLandmass;
+                const playerOnPort = isPlayerOnPort();
+
+                // Only allow sailing if player is currently on a port and targeting a different landmass
+                if (playerOnPort && currentLandmass !== null && currentLandmass !== targetLandmass) {
+                    menuHTML += `<div class="context-menu-item" id="context-sail-to-port" data-target-landmass="${targetLandmass}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #444;">🚢 Sail to Landmass ${targetLandmass}</div>`;
+                }
+                // If not on a port but can reach this port by land, show "Travel to Port" instead
+                else if (!playerOnPort && currentLandmass !== null && currentLandmass === targetLandmass) {
+                    // This will show "Move Here" from the walkable check above, which is appropriate
+                }
+            }
+
+            menuHTML += `<div class="context-menu-item" id="context-cancel" style="padding:8px 12px;cursor:pointer;">Cancel</div>`;
+
+            // Debug: Generated context menu
+            contextMenu.innerHTML = menuHTML;
+
+            // Add event listeners for new options
+            setTimeout(() => {
+                const moveHere = document.getElementById('context-move-here');
+                if (moveHere) {
+                    moveHere.addEventListener('click', () => {
+                        if (contextMenuTargetTile) {
+                            moveCharacterToTile(contextMenuTargetTile);
+                        }
+                        hideContextMenu();
+                    });
+                }
+
+                const sailToPort = document.getElementById('context-sail-to-port');
+                if (sailToPort) {
+                    sailToPort.addEventListener('click', () => {
+                        const targetLandmass = parseInt(sailToPort.dataset.targetLandmass);
+                        if (contextMenuTargetTile) {
+                            travelToPortTile(contextMenuTargetTile.userData.tileId, targetLandmass);
+                        }
+                        hideContextMenu();
+                    });
+                }
+
+                const cancel = document.getElementById('context-cancel');
+                if (cancel) {
+                    cancel.addEventListener('click', () => {
+                        hideContextMenu();
+                    });
+                }
+            }, 0);
+
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = event.clientX + 'px';
+            contextMenu.style.top = event.clientY + 'px';
+            contextMenuVisible = true;
+            contextMenuTargetTile = tile;
+        }
+
+        function hideContextMenu() {
+            const contextMenu = document.getElementById('context-menu');
+            if (contextMenu) {
+                contextMenu.style.display = 'none';
+            }
+            contextMenuVisible = false;
+            contextMenuTargetTile = null;
+        }
+
+        async function travelToPortTile(targetTileId, targetLandmass) {
+            if (!playerCharacter || !pathfinder) {
+                console.log('Cannot travel: no character or pathfinder');
+                return;
+            }
+
+            // Check if player is on a port
+            if (!isPlayerOnPort()) {
+                console.log('🚢 Player must be on a port to sail');
+                return;
+            }
+
+            console.log(`🚢 Sailing to tile ${targetTileId} on landmass ${targetLandmass}`);
+
+            // Use standard movement with port-to-port water walkability
+            await playerCharacter.moveToTile(targetTileId, pathfinder);
+        }
+
+        async function travelToPort(targetLandmassId) {
+            if (!playerCharacter || !pathfinder) {
+                console.log('Cannot travel: no character or pathfinder');
+                return;
+            }
+
+            const targetPortInfo = shippingPorts.get(targetLandmassId);
+            if (!targetPortInfo) {
+                console.log(`Cannot find port for landmass ${targetLandmassId}`);
+                return;
+            }
+
+            const targetTileId = targetPortInfo.waterTile.userData.tileId;
+            console.log(`🚢 Sailing to landmass ${targetLandmassId}, port at tile ${targetTileId}`);
+
+            // Use standard movement with port-to-port water walkability
+            await playerCharacter.moveToTile(targetTileId, pathfinder);
+        }
+
+        async function moveCharacterToTile(tile) {
+            if (!playerCharacter || !pathfinder || !tile) return;
+
+            const tileId = tile.userData.tileId;
+            console.log(`Moving character to tile ${tileId} (${tile.userData.debugData.biomeType})`);
+            await playerCharacter.moveToTile(tileId, pathfinder);
+        }
+
         // Scene setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
         camera.position.set(0, 0, 30);
+        const clock = new THREE.Clock();
 
         // Nebula background variables
         let stars, nebulaLayer1, nebulaLayer2, nebulaLayer3;
@@ -748,6 +1536,10 @@
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Better quality on high-DPI displays
+        // Enable proper color/tone mapping for GLB PBR materials
+        if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
+        if (THREE.ACESFilmicToneMapping) renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
         document.body.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -801,6 +1593,23 @@
         let debugMode = false;
         let shaderMode = false;
 
+        // Structures / placement system
+        const structuresGroup = new THREE.Group();
+        scene.add(structuresGroup);
+        const placementState = { active: false, type: null };
+        let stallsPrototype = null; // Loaded GLB for stalls
+        let placementGhost = null;  // Preview mesh while placing
+
+        // Shipping port system
+        const portsGroup = new THREE.Group();
+        scene.add(portsGroup);
+        let portPrototype = null; // Loaded GLB for shipping port
+        const shippingPorts = new Map(); // Map of port locations by landmass ID
+        
+        // Context menu system
+        let contextMenuVisible = false;
+        let contextMenuTargetTile = null;
+
         // biome settings with seed
         const settings = {
             continents: 6,
@@ -822,8 +1631,11 @@
             waterFlowSpeed: 0.5,
             waterWaveIntensity: 0.3,
             edgeFoamIntensity: 1.0,
+            characterMovementSpeed: 2.0, // Character movement speed (tiles per second)
             waveCrestSize: 1.0,
             coastlineGlow: 1.0,
+            stallsModelPath: 'Models/market-stalls/market-stalls.glb', // Primary path for stalls model
+            portModelPath: 'Models/shipping-port-low-poly/shipping-port-low-poly.glb', // Path for shipping port model
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
@@ -1391,6 +2203,12 @@
         let boats = [];
         let boatGroup = new THREE.Group();
 
+        // Character movement system
+        let characters = [];
+        let tileMap = new Map();
+        let pathfinder = null;
+        let playerCharacter = null;
+
         function findPlayerStartTile() {
             // Find all land tiles (not ocean, not mountain)
             const landTiles = [];
@@ -1478,14 +2296,6 @@
             // Add castle to scene
             scene.add(castle);
             
-            // Add a test sphere to verify positioning
-            const testSphere = new THREE.Mesh(
-                new THREE.SphereGeometry(0.15, 8, 6),
-                new THREE.MeshBasicMaterial({ color: 0x0000ff })
-            );
-            testSphere.position.copy(tilePosition);
-            testSphere.position.add(normal.clone().multiplyScalar(0.3));
-            scene.add(testSphere);
             
             console.log('Simple castle created and positioned');
             console.log('Tile position:', tilePosition);
@@ -1504,67 +2314,29 @@
         }
 
         // Boat creation functions
-        function createBoat(boatColor = 0x8B4513) {
-            const boatWidth = 8;
-            const boatHeight = 3;
-            const boatDepth = 4;
+        async function createBoat(boatColor = 0x8B4513) {
+            await ensureFishingboatLoaded();
 
-            // Create boat hull (main cube)
-            const boatMaterial = new THREE.MeshLambertMaterial({ color: boatColor });
-            const boat = new THREE.Mesh(new THREE.BoxGeometry(boatWidth, boatHeight, boatDepth), boatMaterial);
-            boat.castShadow = true;
+            if (!fishingboatPrototype) {
+                console.warn('Failed to create fishing boat, fishingboatPrototype is null');
+                return null;
+            }
 
-            // Create sail
-            const sailGeometry = new THREE.BufferGeometry();
-            const sailVertices = new Float32Array([
-                // First triangle
-                0, 0, 0,
-                boatWidth + 3, 0, 0,
-                boatWidth + 3, 36, 0,
-                // Second triangle (for double-sided shadow)
-                0, 0, 0.1,
-                boatWidth + 3, 0, 0.1,
-                boatWidth + 3, 36, 0.1
-            ]);
-            const sailIndices = [
-                0, 1, 2,  // First triangle
-                5, 4, 3   // Second triangle (reversed for opposite side)
-            ];
-            
-            sailGeometry.setAttribute('position', new THREE.BufferAttribute(sailVertices, 3));
-            sailGeometry.setIndex(sailIndices);
-            sailGeometry.computeVertexNormals();
+            // Clone the fishing boat model
+            const boat = fishingboatPrototype.clone(true);
 
-            const sailMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
-            const sail = new THREE.Mesh(sailGeometry, sailMaterial);
-            sail.castShadow = true;
-            sail.position.set(-boatWidth / 2 - 8, boatHeight / 2, 0);
-            boat.add(sail);
+            // Scale the fishing boat to appropriate size for the world (extremely small)
+            boat.scale.set(0.0004, 0.0004, 0.0004);
 
-            // Create bow (front part)
-            const bowGeometry = new THREE.BufferGeometry();
-            const bowVertices = new Float32Array([
-                0, boatHeight / 2, boatDepth / 2,
-                0, -boatHeight / 2, boatDepth / 2,
-                0, boatHeight / 2, -boatDepth / 2,
-                0, -boatHeight / 2, -boatDepth / 2,
-                -15, boatHeight / 2, 0
-            ]);
-            const bowIndices = [
-                0, 2, 4,  // Top face
-                4, 1, 0,  // Right face
-                4, 3, 1,  // Bottom face
-                2, 3, 4   // Left face
-            ];
-            
-            bowGeometry.setAttribute('position', new THREE.BufferAttribute(bowVertices, 3));
-            bowGeometry.setIndex(bowIndices);
-            bowGeometry.computeVertexNormals();
+            // Reset any existing rotations from the model
+            boat.rotation.set(0, 0, 0);
 
-            const bow = new THREE.Mesh(bowGeometry, boatMaterial);
-            bow.castShadow = true;
-            bow.position.set(-boatWidth / 2, 0, 0);
-            boat.add(bow);
+            // Center the boat's geometry around its origin for proper rotation
+            boat.traverse((child) => {
+                if (child.isMesh && child.geometry) {
+                    child.geometry.center();
+                }
+            });
 
             // Add boat properties
             boat.userData.isBoat = true;
@@ -1593,27 +2365,32 @@
             return waterTiles;
         }
 
-        function generateBoats() {
+        async function generateBoats() {
             clearBoats();
-            
+
             const waterTiles = findWaterTiles();
             if (waterTiles.length === 0) {
                 console.log('No water tiles found for boats');
                 return;
             }
-            
+
             const boatCount = Math.min(5, Math.floor(waterTiles.length * 0.1)); // 10% of water tiles, max 5 boats
             console.log(`Generating ${boatCount} boats from ${waterTiles.length} water tiles`);
-            
+
             const boatColors = [0x8B4513, 0x654321, 0xA0522D, 0xCD853F, 0xDEB887]; // Different brown shades
-            
+
             for (let i = 0; i < boatCount; i++) {
                 // Pick a random water tile
                 const waterTileData = waterTiles[Math.floor(Math.random() * waterTiles.length)];
-                
+
                 // Create boat
                 const boatColor = boatColors[i % boatColors.length];
-                const boat = createBoat(boatColor);
+                const boat = await createBoat(boatColor);
+
+                if (!boat) {
+                    console.warn(`Failed to create boat ${i}`);
+                    continue;
+                }
                 
                 // Position boat exactly on this tile's shell radius (snap to tile surface)
                 const normal = waterTileData.normal.clone();
@@ -1625,6 +2402,8 @@
                 boat.userData.baseNormal = normal.clone();
                 boat.userData.baseRadius = baseRadius;
                 boat.userData.basePosition = surfacePos.clone();
+                boat.userData.homeWaterTile = waterTileData.tile; // Store reference to the tile for pathfinding
+                boat.userData.initialized = false; // Will be initialized in updateBoats
                 
                 
                 // Orient boat to sit properly on the water surface (same method as castle)
@@ -1664,15 +2443,731 @@
         }
 
         function updateBoats() {
-            // Gentle bobbing only around the tile's true shell radius; do not drift
-            const t = performance.now() * 0.001;
-            for (const boat of boats) {
-                if (!boat.userData || !boat.userData.baseNormal || !boat.userData.baseRadius) continue;
+            // Use performance.now() instead of clock.getDelta() to avoid interfering with character movement
+            const currentTime = performance.now() * 0.001; // Convert to seconds
+            if (!updateBoats.lastTime) updateBoats.lastTime = currentTime;
+            const deltaTime = currentTime - updateBoats.lastTime;
+            updateBoats.lastTime = currentTime;
+            
+            for (let i = 0; i < boats.length; i++) {
+                const boat = boats[i];
+                if (!boat.userData) continue;
+                
+                // Initialize boat movement data if needed
+                if (!boat.userData.initialized) {
+                    initializeBoatMovement(boat);
+                }
+                
+                // Update boat position along its sailing path
+                updateBoatMovement(boat, deltaTime);
+                
+                // Add very gentle bobbing effect
+                const t = performance.now() * 0.001;
                 if (boat.userData.bobPhase === undefined) boat.userData.bobPhase = Math.random() * Math.PI * 2;
-                const bob = Math.sin(t * 0.6 + boat.userData.bobPhase) * 0.004; // +/- 0.004 around base radius
-                const radius = boat.userData.baseRadius + bob;
-                boat.position.copy(boat.userData.baseNormal).multiplyScalar(radius);
+                const bob = Math.sin(t * 0.2 + boat.userData.bobPhase) * 0.001; // Extremely gentle bobbing
+
+                // Apply bobbing to the current position (keep boat well above surface)
+                const normal = boat.userData.currentNormal || boat.userData.baseNormal;
+                const radius = boat.userData.currentRadius || boat.userData.baseRadius;
+                const heightOffset = 0.08; // Raise boats well above surface
+                boat.position.copy(normal).multiplyScalar(radius + bob + heightOffset);
             }
+        }
+        
+        function initializeBoatMovement(boat) {
+            if (!boat.userData.homeWaterTile) return;
+            
+            // Find nearby water tiles to create a sailing route
+            const waterTiles = findNearbyWaterTiles(boat.userData.homeWaterTile, 2); // Smaller sailing area (2 steps instead of 3)
+            
+            if (waterTiles.length > 1) {
+                // Create a circular sailing route
+                boat.userData.sailingRoute = waterTiles;
+                boat.userData.routeIndex = 0;
+                boat.userData.routeProgress = 0;
+                boat.userData.sailingSpeed = 0.1 + Math.random() * 0.2; // 0.1 to 0.3 tiles per second (much slower)
+                boat.userData.currentNormal = boat.userData.baseNormal.clone();
+                boat.userData.currentRadius = boat.userData.baseRadius;
+            } else {
+                // Not enough water tiles, stay stationary
+                boat.userData.sailingRoute = [boat.userData.homeWaterTile];
+                boat.userData.routeIndex = 0;
+                boat.userData.routeProgress = 0;
+                boat.userData.sailingSpeed = 0;
+                boat.userData.currentNormal = boat.userData.baseNormal.clone();
+                boat.userData.currentRadius = boat.userData.baseRadius;
+            }
+            
+            boat.userData.initialized = true;
+            console.log(`Initialized boat with ${boat.userData.sailingRoute.length} waypoints`);
+        }
+        
+        function findNearbyWaterTiles(startTile, maxDistance) {
+            const waterTiles = [startTile];
+            const visited = new Set([startTile.userData.tileId]);
+            const queue = [{tile: startTile, distance: 0}];
+            
+            while (queue.length > 0) {
+                const {tile, distance} = queue.shift();
+                
+                if (distance >= maxDistance) continue;
+                
+                const neighbors = tile.userData.debugData.neighbors || [];
+                for (const neighborId of neighbors) {
+                    if (visited.has(neighborId)) continue;
+                    
+                    // Find the neighbor tile
+                    let neighborTile = null;
+                    scene.traverse((child) => {
+                        if (child.userData && child.userData.tileId === neighborId) {
+                            neighborTile = child;
+                        }
+                    });
+                    
+                    if (neighborTile && neighborTile.userData.debugData.biomeType === 'ocean') {
+                        visited.add(neighborId);
+                        waterTiles.push(neighborTile);
+                        queue.push({tile: neighborTile, distance: distance + 1});
+                    }
+                }
+            }
+            
+            return waterTiles;
+        }
+        
+        function updateBoatMovement(boat, deltaTime) {
+            if (!boat.userData.sailingRoute || boat.userData.sailingRoute.length <= 1) {
+                // Stationary boat
+                return;
+            }
+            
+            const route = boat.userData.sailingRoute;
+            const speed = boat.userData.sailingSpeed;
+            
+            // Update progress along current route segment
+            boat.userData.routeProgress += speed * deltaTime;
+            
+            // Check if we've completed current segment
+            if (boat.userData.routeProgress >= 1.0) {
+                boat.userData.routeProgress = 0.0;
+                boat.userData.routeIndex = (boat.userData.routeIndex + 1) % route.length;
+            }
+            
+            // Get current and next waypoints
+            const currentIndex = boat.userData.routeIndex;
+            const nextIndex = (currentIndex + 1) % route.length;
+            const currentWaypoint = route[currentIndex];
+            const nextWaypoint = route[nextIndex];
+            
+            // Interpolate position between waypoints on the sphere surface
+            const currentPos = currentWaypoint.userData.debugData.tileCenter.clone();
+            const nextPos = nextWaypoint.userData.debugData.tileCenter.clone();
+            const currentNormal = currentWaypoint.userData.debugData.tileNormal.clone();
+            const nextNormal = nextWaypoint.userData.debugData.tileNormal.clone();
+            
+            // Spherical interpolation for surface movement
+            const t = boat.userData.routeProgress;
+            
+            // Use the actual tile surface positions instead of interpolating normals/radius separately
+            const currentSurfacePos = currentWaypoint.userData.debugData.tileCenter.clone();
+            const nextSurfacePos = nextWaypoint.userData.debugData.tileCenter.clone();
+            
+            // Interpolate between surface positions and then project back to sphere surface
+            const interpolatedPos = currentSurfacePos.clone().lerp(nextSurfacePos, t);
+            
+            // Ensure the interpolated position is exactly on the sphere surface
+            const distanceFromCenter = interpolatedPos.length();
+            const surfaceNormal = interpolatedPos.clone().normalize();
+            
+            // Use the distance from center of the interpolated position to stay on surface
+            boat.userData.currentNormal = surfaceNormal;
+            boat.userData.currentRadius = distanceFromCenter;
+            
+            // Calculate boat direction for smooth rotation (where boat is heading)
+            const direction = nextSurfacePos.clone().sub(currentSurfacePos).normalize();
+            
+            if (direction.length() > 0.01) {
+                // Calculate target rotation using the surface normal and movement direction
+                const targetForward = direction.clone();
+                const surfaceUp = surfaceNormal.clone();
+                
+                // Create a proper coordinate system on the surface
+                const targetRight = targetForward.clone().cross(surfaceUp).normalize();
+                const targetUp = targetRight.clone().cross(targetForward).normalize();
+                
+                // Create rotation matrix for the target orientation with 90-degree correction
+                const targetMatrix = new THREE.Matrix4();
+                // Rotate the forward direction 90 degrees to match boat model orientation
+                const correctedForward = targetRight.clone(); // Use right as forward (90-degree rotation)
+                const correctedRight = targetForward.clone().negate(); // Use -forward as right
+                targetMatrix.makeBasis(correctedRight, targetUp, correctedForward.clone().negate());
+                
+                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(targetMatrix);
+                
+                // Smoothly interpolate rotation to avoid jumping
+                if (!boat.userData.currentQuaternion) {
+                    boat.userData.currentQuaternion = boat.quaternion.clone();
+                }
+                
+                // Much smoother rotation interpolation (slerp)
+                const rotationSpeed = 1.0; // Slower, smoother turning
+                const slerpAmount = Math.min(1.0, rotationSpeed * deltaTime);
+                boat.userData.currentQuaternion.slerp(targetQuaternion, slerpAmount);
+
+                // Store position before rotation to avoid movement during rotation
+                const currentPos = boat.position.clone();
+                boat.setRotationFromQuaternion(boat.userData.currentQuaternion);
+                // Restore position to ensure rotation happens around boat center
+                boat.position.copy(currentPos);
+
+                // Add a subtle forward tilt for dynamic appearance
+                boat.rotateX(-0.02);
+            }
+        }
+
+        function updateExistingBoatScales(newScale) {
+            for (let i = 0; i < boats.length; i++) {
+                const boat = boats[i];
+                boat.scale.set(newScale, newScale, newScale);
+            }
+        }
+
+        // Make the function globally available for testing
+        window.updateExistingBoatScales = updateExistingBoatScales;
+
+        // Apply the tiny scale to existing boats at the end of planet generation
+        function applyTinyBoatScale() {
+            updateExistingBoatScales(0.0004);
+        }
+
+        // Character movement system
+        function buildTileGraph() {
+            tileMap.clear();
+            
+            // First pass: collect all tiles
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile) {
+                    const tileId = child.userData.tileId;
+                    tileMap.set(tileId, child);
+                }
+            });
+            
+            console.log(`Built tile graph with ${tileMap.size} tiles`);
+            
+            // Second pass: find neighbors for each tile
+            let tilesWithNeighbors = 0;
+            tileMap.forEach((tile, tileId) => {
+                const neighbors = findAdjacentTiles(tile, tileMap);
+                tile.userData.debugData.neighbors = neighbors;
+                if (neighbors.length > 0) tilesWithNeighbors++;
+            });
+            console.log(`${tilesWithNeighbors} tiles have neighbors`);
+        }
+
+        function findAdjacentTiles(tile, tileMap) {
+            const neighbors = [];
+            const myBoundary = tile.userData.debugData.boundaryDirs || [];
+            if (myBoundary.length === 0) return neighbors;
+            
+            // Two tiles are neighbors if they share at least two boundary directions (same edge)
+            tileMap.forEach((otherTile, otherId) => {
+                if (otherId === tile.userData.tileId) return;
+                const otherBoundary = otherTile.userData.debugData.boundaryDirs || [];
+                if (otherBoundary.length === 0) return;
+                let shared = 0;
+                for (let i = 0; i < myBoundary.length; i++) {
+                    for (let j = 0; j < otherBoundary.length; j++) {
+                        if (myBoundary[i].distanceTo(otherBoundary[j]) < 0.02) {
+                            shared++;
+                            if (shared >= 2) {
+                                neighbors.push(otherId);
+                                return; // Next candidate tile
+                            }
+                        }
+                    }
+                }
+            });
+            return neighbors;
+        }
+
+
+        class AStarPathfinder {
+            constructor(tileMap) {
+                this.tileMap = tileMap;
+            }
+            
+            findPath(startTileId, goalTileId) {
+                // Check if both tiles exist
+                if (!this.tileMap.has(startTileId)) {
+                    console.log(`Start tile ${startTileId} not found in tileMap`);
+                    return null;
+                }
+                if (!this.tileMap.has(goalTileId)) {
+                    console.log(`Goal tile ${goalTileId} not found in tileMap`);
+                    return null;
+                }
+                
+                const openSet = new Set([startTileId]);
+                const cameFrom = new Map();
+                const gScore = new Map();
+                const fScore = new Map();
+                
+                // Initialize scores
+                this.tileMap.forEach((tile, id) => {
+                    gScore.set(id, Infinity);
+                    fScore.set(id, Infinity);
+                });
+                
+                gScore.set(startTileId, 0);
+                fScore.set(startTileId, this.heuristic(startTileId, goalTileId));
+                
+                while (openSet.size > 0) {
+                    // Find tile with lowest fScore
+                    let current = null;
+                    let lowestF = Infinity;
+                    for (const tileId of openSet) {
+                        if (fScore.get(tileId) < lowestF) {
+                            lowestF = fScore.get(tileId);
+                            current = tileId;
+                        }
+                    }
+                    
+                    if (current === goalTileId) {
+                        const path = this.reconstructPath(cameFrom, current);
+                        console.log(`Path found with ${path.length} tiles`);
+                        return path;
+                    }
+                    
+                    openSet.delete(current);
+                    
+                    // Check neighbors
+                    const tile = this.tileMap.get(current);
+                    const neighbors = tile.userData.debugData.neighbors || [];
+                    
+                    for (const neighborId of neighbors) {
+                        const neighbor = this.tileMap.get(neighborId);
+                        if (!neighbor || !neighbor.userData.debugData.isWalkable) {
+                            continue;
+                        }
+                        
+                        const tentativeG = gScore.get(current) + this.getMovementCost(current, neighborId);
+                        
+                        if (tentativeG < gScore.get(neighborId)) {
+                            cameFrom.set(neighborId, current);
+                            gScore.set(neighborId, tentativeG);
+                            fScore.set(neighborId, tentativeG + this.heuristic(neighborId, goalTileId));
+                            
+                            if (!openSet.has(neighborId)) {
+                                openSet.add(neighborId);
+                            }
+                        }
+                    }
+                }
+                
+                return null; // No path found
+            }
+            
+            heuristic(tileIdA, tileIdB) {
+                const posA = this.tileMap.get(tileIdA).userData.debugData.tileNormal;
+                const posB = this.tileMap.get(tileIdB).userData.debugData.tileNormal;
+                return posA.distanceTo(posB);
+            }
+            
+            getMovementCost(fromTileId, toTileId) {
+                const toTile = this.tileMap.get(toTileId);
+                let cost = toTile.userData.debugData.movementCost || 1.0;
+                
+                // Add elevation cost
+                const fromTile = this.tileMap.get(fromTileId);
+                const elevationDiff = Math.abs(
+                    fromTile.userData.debugData.elevation - 
+                    toTile.userData.debugData.elevation
+                );
+                cost += elevationDiff * 2; // Steep terrain costs more
+                
+                return cost;
+            }
+            
+            reconstructPath(cameFrom, current) {
+                const path = [current];
+                while (cameFrom.has(current)) {
+                    current = cameFrom.get(current);
+                    path.unshift(current);
+                }
+                return path;
+            }
+        }
+
+
+        class Character {
+            constructor(startTileId, tileMap) {
+                this.currentTileId = startTileId;
+                this.tileMap = tileMap;
+                this.mesh = this.createCharacterMesh();
+                this.path = [];
+                this.pathIndex = 0;
+                this.isMoving = false;
+                this.speed = settings.characterMovementSpeed; // tiles per second (easily adjustable)
+                this.movementStartTime = 0; // Track movement time for safety
+                this.lastProgress = 0; // Track movement progress
+                this.segmentT = 0; // Interpolation progress within current segment [0..1]
+                this.pathLine = null; // Visualized dashed path line
+
+                // Sailboat travel properties
+                this.isShipTravel = false;
+                this.originalMesh = null; // Store original character mesh
+                this.sailboatMesh = null; // Store sailboat mesh
+                this.baseSpeed = settings.characterMovementSpeed; // Store original speed
+
+                this.positionCharacter();
+            }
+            
+            createCharacterMesh() {
+                const geometry = new THREE.SphereGeometry(0.15, 8, 6);
+                const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+                return mesh;
+            }
+            
+            positionCharacter() {
+                const tile = this.tileMap.get(this.currentTileId);
+                const tileData = tile.userData.debugData;
+
+                // Position on tile surface using the tile's actual center position
+                this.mesh.position.copy(tileData.tileCenter);
+
+                // Add height offset - sailboat needs to be above surface
+                const heightOffset = this.isShipTravel ? 0.25 : 0.2;
+                this.mesh.position.add(tileData.tileNormal.clone().multiplyScalar(heightOffset));
+
+                // Both use same rotation when stationary
+                this.mesh.rotation.set(0, 0, 0);
+            }
+
+            async switchToSailboat() {
+                if (this.isShipTravel) return; // Already in ship mode
+
+                await ensureSailboatLoaded();
+
+                // Store original mesh if not already stored
+                if (!this.originalMesh) {
+                    this.originalMesh = this.mesh;
+                }
+
+                // Create sailboat mesh if not exists
+                if (!this.sailboatMesh && sailboatPrototype) {
+                    this.sailboatMesh = sailboatPrototype.clone(true);
+
+                    // Scale down the sailboat to appropriate size (50% smaller)
+                    this.sailboatMesh.scale.set(0.001, 0.001, 0.001);
+
+                    // Reset any existing rotations from the model
+                    this.sailboatMesh.rotation.set(0, 0, 0);
+
+                    // Add a larger red sphere at the rotation center for debugging
+                    const rotationIndicator = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.1, 8, 6),
+                        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+                    );
+                    rotationIndicator.position.set(0, 0, 0); // At sailboat center
+                    this.sailboatMesh.add(rotationIndicator); // Attach to sailboat so it rotates with it
+
+                    scene.add(this.sailboatMesh);
+                }
+
+                // Switch to sailboat
+                if (this.sailboatMesh) {
+                    this.originalMesh.visible = false;
+                    this.mesh = this.sailboatMesh;
+                    this.mesh.visible = true;
+                    this.isShipTravel = true;
+
+                    // Reduce speed for ship travel (half speed)
+                    this.speed = this.baseSpeed * 0.5;
+
+                    // Make sure sailboat is positioned exactly where character was
+                    this.positionCharacter();
+                }
+            }
+
+            switchToCharacter() {
+                if (!this.isShipTravel) return; // Already in character mode
+
+                // Switch back to original character mesh
+                if (this.originalMesh && this.sailboatMesh) {
+                    this.sailboatMesh.visible = false;
+                    this.mesh = this.originalMesh;
+                    this.mesh.visible = true;
+                    this.isShipTravel = false;
+
+                    // Restore normal speed
+                    this.speed = this.baseSpeed;
+
+                    this.positionCharacter();
+                }
+            }
+            
+            async moveToTile(targetTileId, pathfinder) {
+                // Don't move if already at target
+                if (this.currentTileId === targetTileId) {
+                    console.log(`Character already at tile ${targetTileId}`);
+                    return;
+                }
+
+                // Check if this is port-to-port travel
+                const currentTile = this.tileMap.get(this.currentTileId);
+                const targetTile = this.tileMap.get(targetTileId);
+                const isPortToPortTravel = currentTile?.userData.hasPort && targetTile?.userData.hasPort;
+
+                let path;
+
+                if (isPortToPortTravel) {
+                    console.log(`Port-to-port travel from ${this.currentTileId} to ${targetTileId}, enabling water-only walkability`);
+
+                    // Switch to sailboat for ship travel
+                    await this.switchToSailboat();
+
+                    // Temporarily modify walkability for water-only ship travel
+                    const originalWalkability = new Map();
+                    this.tileMap.forEach((tile, tileId) => {
+                        const debugData = tile.userData.debugData;
+                        const isWater = debugData.biomeType === 'ocean';
+                        const isPort = tile.userData.hasPort;
+                        const isStartOrEndPort = tileId === this.currentTileId || tileId === targetTileId;
+
+                        // Store original walkability for all tiles
+                        originalWalkability.set(tileId, debugData.isWalkable);
+
+                        if (isWater || isStartOrEndPort) {
+                            // Make water tiles and start/end ports walkable
+                            debugData.isWalkable = true;
+                            debugData.movementCost = 1.0;
+                        } else {
+                            // Make all other land tiles unwalkable for water-only travel
+                            debugData.isWalkable = false;
+                            debugData.movementCost = Infinity;
+                        }
+                    });
+
+                    // Find path with only water tiles and ports walkable
+                    path = pathfinder.findPath(this.currentTileId, targetTileId);
+
+                    // Restore original walkability for all tiles
+                    originalWalkability.forEach((originalWalkable, tileId) => {
+                        const tile = this.tileMap.get(tileId);
+                        if (tile?.userData.debugData) {
+                            tile.userData.debugData.isWalkable = originalWalkable;
+                            tile.userData.debugData.movementCost = originalWalkable ? 1.0 : Infinity;
+                        }
+                    });
+
+                    console.log('Tile walkability restored after water-only pathfinding');
+                } else {
+                    // Regular land travel
+                    path = pathfinder.findPath(this.currentTileId, targetTileId);
+                }
+
+                if (path && path.length > 1) {
+                    this.path = path.slice(1); // Remove current tile
+                    this.pathIndex = 0;
+                    this.isMoving = true;
+                    this.movementStartTime = performance.now(); // Start timing
+                    this.lastProgress = 0; // Reset progress tracking
+                    this.segmentT = 0;
+                    // Draw expected route as dashed line (start + remaining)
+                    this.clearPathLine();
+                    this.drawPathLine([this.currentTileId, ...this.path]);
+                    console.log(`Character moving to tile ${targetTileId} via path:`, this.path);
+                } else {
+                    console.log(`No path found to tile ${targetTileId}`);
+                }
+            }
+            
+            update(deltaTime) {
+                if (!this.isMoving || this.path.length === 0) return;
+                
+                // Movement timeout disabled to allow long journeys
+                // if (performance.now() - this.movementStartTime > 10000) {
+                //     console.log('Movement timeout, stopping character');
+                //     this.isMoving = false;
+                //     this.path = [];
+                //     this.pathIndex = 0;
+                //     this.segmentT = 0;
+                //     this.clearPathLine();
+                //     return;
+                // }
+                
+                const currentTile = this.tileMap.get(this.currentTileId);
+                const nextTileId = this.path[this.pathIndex];
+                const nextTile = this.tileMap.get(nextTileId);
+                
+                if (!currentTile || !nextTile) {
+                    console.log('Invalid tile in path, stopping movement');
+                    this.isMoving = false;
+                    this.segmentT = 0;
+                    this.clearPathLine();
+                    return;
+                }
+                
+                const currentPos = currentTile.userData.debugData.tileCenter;
+                const nextPos = nextTile.userData.debugData.tileCenter;
+                
+                // Calculate movement
+                const distance = currentPos.distanceTo(nextPos);
+                const moveDistance = this.speed * deltaTime;
+                
+                // Log movement progress occasionally
+                if (Math.random() < 0.01) { // 1% chance to log
+                    console.log(`Moving from tile ${this.currentTileId} to ${nextTileId}, distance: ${distance.toFixed(3)}, moveDistance: ${moveDistance.toFixed(3)}, progress: ${(moveDistance/distance*100).toFixed(1)}%`);
+                }
+                
+                // Accumulate progress within this segment so we don't reset each frame
+                this.segmentT += moveDistance / Math.max(distance, 1e-6);
+                if (this.segmentT >= 1.0) {
+                    this.segmentT = 0;
+                    // Reached next tile
+                    this.currentTileId = nextTileId;
+                    this.pathIndex++;
+                    
+                    if (this.pathIndex >= this.path.length) {
+                        // Reached final destination - position character properly
+                        const wasShipTravel = this.isShipTravel;
+                        this.isMoving = false;
+                        this.path = [];
+                        this.pathIndex = 0;
+
+                        // Switch back to character model if we were in ship travel
+                        if (wasShipTravel) {
+                            this.switchToCharacter();
+                            console.log('🚢 Ship travel completed, switched back to character');
+                        } else {
+                            console.log('Character reached destination');
+                        }
+
+                        this.positionCharacter(); // Only position at final destination
+                        this.clearPathLine();
+                    }
+                    // Don't call positionCharacter() for intermediate tiles during movement
+                } else {
+                    // Move towards next tile using accumulated segmentT
+                    const newPos = currentPos.clone().lerp(nextPos, this.segmentT);
+                    
+                    // Position at interpolated position - IDENTICAL for both character and sailboat
+                    this.mesh.position.copy(newPos);
+
+                    // Add height offset - sailboat above surface level
+                    const heightOffset = this.isShipTravel ? 0.25 : 0.2;
+                    this.mesh.position.add(
+                        nextTile.userData.debugData.tileNormal.clone().multiplyScalar(heightOffset)
+                    );
+
+                    // Handle rotation AFTER positioning is complete (doesn't affect path following)
+                    if (this.isShipTravel) {
+                        // Make sailboat face direction of travel - this is purely cosmetic
+                        const direction = nextPos.clone().sub(currentPos).normalize();
+                        if (direction.length() > 0.1) {
+                            this.mesh.lookAt(this.mesh.position.clone().add(direction));
+                        }
+                    } else {
+                        // Keep character upright
+                        this.mesh.rotation.set(0, 0, 0);
+                    }
+                }
+            }
+            
+            clearPathLine() {
+                if (this.pathLine) {
+                    scene.remove(this.pathLine);
+                    if (this.pathLine.geometry) this.pathLine.geometry.dispose();
+                    if (this.pathLine.material) this.pathLine.material.dispose();
+                    this.pathLine = null;
+                }
+            }
+            
+            drawPathLine(fullPathIds) {
+                if (!fullPathIds || fullPathIds.length < 2) return;
+                const pts = [];
+                for (let i = 0; i < fullPathIds.length; i++) {
+                    const t = this.tileMap.get(fullPathIds[i]);
+                    if (!t || !t.userData || !t.userData.debugData) continue;
+                    const c = t.userData.debugData.tileCenter;
+                    const n = t.userData.debugData.tileNormal;
+                    pts.push(c.clone().add(n.clone().multiplyScalar(0.22)));
+                }
+                if (pts.length < 2) return;
+                const g = new THREE.BufferGeometry().setFromPoints(pts);
+                // Use cyan color for ship travel, white for land travel
+                const color = this.isShipTravel ? 0x00FFFF : 0xffffff;
+                const m = new THREE.LineDashedMaterial({ color: color, dashSize: 0.2, gapSize: 0.1 });
+                const line = new THREE.Line(g, m);
+                line.computeLineDistances();
+                line.renderOrder = 999;
+                scene.add(line);
+                this.pathLine = line;
+            }
+
+
+
+        }
+
+        function createPlayerCharacter() {
+            if (playerCharacter) {
+                scene.remove(playerCharacter.mesh);
+                playerCharacter = null;
+            }
+
+            // Find the castle tile
+            let castleTileId = null;
+            let castleTile = null;
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isPlayerStart) {
+                    castleTileId = child.userData.tileId;
+                    castleTile = child;
+                }
+            });
+
+            if (castleTileId === null) {
+                console.log('No castle tile found, using first land tile');
+                // Fallback to first land tile
+                tileMap.forEach((tile, tileId) => {
+                    if (tile.userData.debugData.isWalkable && castleTileId === null) {
+                        castleTileId = tileId;
+                        castleTile = tile;
+                    }
+                });
+            }
+
+            if (castleTileId !== null) {
+                playerCharacter = new Character(castleTileId, tileMap);
+                characters.push(playerCharacter);
+                console.log(`Created player character at tile ${castleTileId}`);
+
+                // Focus camera on the player's starting position
+                focusCameraOnTile(castleTile);
+            }
+        }
+
+        function focusCameraOnTile(tile) {
+            if (!tile || !tile.userData || !tile.userData.debugData) return;
+
+            const tileCenter = tile.userData.debugData.tileCenter.clone();
+            const tileNormal = tile.userData.debugData.tileNormal.clone();
+
+            // Position camera at a nice distance from the tile, but keep planet center as target
+            const cameraDistance = 15; // Adjust this for desired zoom level
+            const cameraPosition = tileCenter.clone().add(tileNormal.clone().multiplyScalar(cameraDistance));
+
+            // Set camera position to look at the player tile
+            camera.position.copy(cameraPosition);
+
+            // Keep the planet center (0,0,0) as the rotation target for orbital controls
+            controls.target.set(0, 0, 0);
+
+            // Update controls to reflect the new position
+            controls.update();
+
+            console.log(`Camera positioned above player start tile, rotating around planet center`);
         }
 
         // Cloud generation function
@@ -1926,7 +3421,7 @@
             scene.remove(obj);
         }
 
-        function buildPlanet(detail) {
+        async function buildPlanet(detail) {
             console.log('buildPlanet()', { detail, settings: { ...settings } });
             // reseed simplex with current seed to ensure determinism across rebuilds
             simplex = new SimplexNoise(settings.seed.toString());
@@ -1935,10 +3430,17 @@
             hoveredTile = null;
             
             // Clean previous
-            disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup); disposeObject(cloudSphere);
-            
+            disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup); disposeObject(cloudSphere); disposeObject(portsGroup);
+
             // Clear water materials map
             waterMaterials.clear();
+
+            // Clear shipping ports
+            shippingPorts.clear();
+
+            // Recreate ports group
+            portsGroup.clear();
+            scene.add(portsGroup);
 
             // Base icosahedron
             const geom = new THREE.IcosahedronGeometry(radius, detail);
@@ -2447,6 +3949,11 @@
                     tileCenter: centerPos.clone(),
                     tileNormal: center.clone().normalize(),
                     tileRadius: centerPos.length(),
+                    // Boundary directions (unit vectors) around this tile for robust adjacency
+                    boundaryDirs: boundary.map(b => b.clone().normalize()),
+                    // Character movement properties
+                    isWalkable: !isOcean, // Can characters walk on this tile?
+                    movementCost: isOcean ? Infinity : 1.0, // Movement cost (ocean = impassable)
                     originalColor: tileColor // Store the original tile color for shader materials
                 };
                 
@@ -2511,7 +4018,18 @@
             loadCastle();
             
             // Generate boats on water tiles
-            generateBoats();
+            await generateBoats();
+
+            // Apply tiny scale immediately after boats are generated
+            applyTinyBoatScale();
+            
+            // Build tile graph and create character system
+            buildTileGraph();
+            pathfinder = new AStarPathfinder(tileMap);
+            createPlayerCharacter();
+
+            // Place shipping ports after tile graph is built (requires neighbors)
+            placeShippingPorts();
             
             // Snow effects disabled by default
             
@@ -2570,16 +4088,16 @@
         const cloudOpacityValue = document.getElementById('cloudOpacityValue');
         const regenBtn = document.getElementById('regen');
 
-        function setDetail(val) {
+        async function setDetail(val) {
             detailValue.textContent = val;
             lastDetail = parseInt(val,10);
             console.log('detail changed ->', lastDetail);
-            buildPlanet(lastDetail);
+            await buildPlanet(lastDetail);
         }
-        function updateAndRebuild(reason) {
+        async function updateAndRebuild(reason) {
             if (reason) console.log('rebuild reason:', reason);
             setSeedLabel();
-            buildPlanet(lastDetail);
+            await buildPlanet(lastDetail);
         }
 
         detailSlider.addEventListener('input', e => setDetail(e.target.value));
@@ -3222,7 +4740,7 @@
             if (!debugData || !debugContent || !debugOverlay) return;
             
             // Format the debug information
-            const info = `
+            let info = `
                 <div><strong>Biome:</strong> ${debugData.biomeType}</div>
                 <div><strong>Type:</strong> ${debugData.isOcean ? 'Ocean' : 'Land'}</div>
                 <div><strong>Elevation:</strong> ${debugData.elevation.toFixed(3)}</div>
@@ -3232,6 +4750,12 @@
                 <div><strong>Sea Level:</strong> ${debugData.seaLevel.toFixed(3)}</div>
                 <div><strong>Tile ID:</strong> ${tile.userData.tileId}</div>
             `;
+
+            // Add port information if this tile has a port
+            if (tile.userData.hasPort) {
+                info += `<div style="color: #FFD700;"><strong>🚢 Shipping Port</strong></div>`;
+                info += `<div><strong>Landmass:</strong> ${tile.userData.portLandmass}</div>`;
+            }
             
             debugContent.innerHTML = info;
             debugOverlay.style.display = 'block';
@@ -3245,8 +4769,84 @@
             }
         }
         
-        // Add mouse event listener
+        // Right-click handler for context menu
+        function onRightClick(event) {
+            event.preventDefault(); // Prevent browser context menu
+            
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update raycaster
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Calculate objects intersecting the ray
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            // Only process clicks on actual tiles, ignore other objects
+            for (let i = 0; i < intersects.length; i++) {
+                const intersect = intersects[i];
+                const object = intersect.object;
+                
+                // Check if we right-clicked on a tile (and only tiles)
+                if (object.userData && object.userData.isTile) {
+                    const tileData = object.userData.debugData;
+
+                    // Show context menu for walkable tiles or port tiles
+                    if (tileData.isWalkable || object.userData.hasPort) {
+                        showContextMenu(event, object);
+                        return; // Exit after processing the first tile found
+                    }
+                }
+            }
+            
+            // If we get here, no walkable tile was clicked - hide context menu
+            hideContextMenu();
+        }
+
+        // Mouse click handler for placement mode only
+        function onMouseClick(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update raycaster
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Calculate objects intersecting the ray
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            // Only process clicks on actual tiles, ignore other objects
+            for (let i = 0; i < intersects.length; i++) {
+                const intersect = intersects[i];
+                const object = intersect.object;
+                
+                // Check if we clicked on a tile (and only tiles)
+                if (object.userData && object.userData.isTile) {
+                    // If we're in placement mode, place structure
+                    if (placementState.active) {
+                        placeStructureOnTile(object);
+                        return;
+                    }
+                }
+            }
+            
+            // If we get here, no tile was clicked or not in placement mode - do nothing
+        }
+        
+        // Add mouse event listeners
         renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+        renderer.domElement.addEventListener('click', onMouseClick, false);
+        renderer.domElement.addEventListener('contextmenu', onRightClick, false);
+        
+        // Context menu event listeners are now dynamically created in showContextMenu()
+        
+        // Hide context menu on left click or escape
+        document.addEventListener('click', () => {
+            if (contextMenuVisible) {
+                hideContextMenu();
+            }
+        });
         
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
@@ -3400,6 +5000,14 @@
             
             // Update boats
             updateBoats();
+            
+            // Update characters
+            characters.forEach(character => {
+                character.update(clock.getDelta());
+            });
+
+            // Update placement ghost if active
+            updatePlacementGhost();
             
             // Update orbiting light
             lightOrbitAngle += lightOrbitSpeed * settings.lightSpeed;

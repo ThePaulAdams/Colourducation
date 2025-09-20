@@ -18,7 +18,33 @@ Experience an immersive planetary strategy game built on a hexagonal grid system
 3. Begin exploring procedurally generated worlds
 
 ### Running the Game
-Simply open `index.html` in any modern web browser. The game will work immediately without any build process or server setup.
+
+#### Local Development
+For best results (model loading), run via a local server to avoid CORS issues:
+
+**Option 1: Using the included Node.js server**
+```bash
+npm install
+npm start
+```
+Then open `http://localhost:3000`
+
+**Option 2: Using npx http-server**
+```bash
+npx http-server . -p 8000
+```
+Then open `http://localhost:8000/index.html`
+
+#### Railway Deployment
+This application is configured for Railway deployment with:
+- `package.json` - Defines Node.js dependencies and start script
+- `server.js` - Express server for serving static files
+- Automatic port detection via `process.env.PORT`
+
+Deploy to Railway:
+1. Connect your repository to Railway
+2. Railway will automatically detect the Node.js app and run `npm start`
+3. Your game will be available at your Railway app URL
 
 ## 🎮 Core Features
 
@@ -36,6 +62,7 @@ Simply open `index.html` in any modern web browser. The game will work immediate
 - **Dynamic Clouds**: Procedurally generated cloud formations
 - **Snow Particles**: Atmospheric snow effects across the planet
 - **Water Ripples**: Animated ocean surfaces for enhanced realism
+- **Store & Placement (Mock)**: Simple UI to place a stalls structure on tiles
 
 ### Debug & Analysis Tools
 - **Biome Inspector**: Hover over tiles to examine biome calculation parameters
@@ -93,6 +120,9 @@ The hex-based grid system provides the foundation for deep strategic gameplay me
 ### File Structure
 - `index.html` - Main game application
 - `hexasphere.js` - Hexagonal sphere geometry library
+- `server.js` - Express server for production deployment
+- `package.json` - Node.js dependencies and scripts
+- `Models/` - Place GLB models here (e.g., `stalls.glb`)
 - `README.md` - Project documentation
 - `CLAUDE.md` - Development guidance
 

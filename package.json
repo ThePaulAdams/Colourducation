@@ -1,0 +1,25 @@
+{
+  "name": "colourducation-hex-planet",
+  "version": "1.0.0",
+  "description": "A sophisticated planetary hex-based game featuring procedurally generated worlds",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "threejs",
+    "webgl",
+    "procedural-generation",
+    "hex-game",
+    "3d-game"
+  ],
+  "author": "",
+  "license": "MIT"
+}
