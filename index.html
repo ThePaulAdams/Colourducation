@@ -126,8 +126,12 @@
         
         <!-- Terrain Tab -->
         <div id="tab-terrain-content" class="tab-content">
-        <label>Tile density (detail): <span class="value" id="detailValue">15</span></label>
-        <input type="range" id="detail" min="0" max="50" step="1" value="9" />
+        <label>Texture Grid Density: <span class="value" id="textureDetailValue">9</span></label>
+        <input type="range" id="textureDetail" min="0" max="20" step="1" value="9" />
+        <label style="margin-top:10px">Strategic Grid Density: <span class="value" id="strategicDetailValue">40</span> <span style="font-size:10px; color:#ff6b6b;" id="strategicWarning"></span></label>
+        <input type="range" id="strategicDetail" min="0" max="100" step="1" value="40" />
+        <label style="margin-top:10px">Strategic Grid Offset: <span class="value" id="strategicGridOffsetValue">0.11</span></label>
+        <input type="range" id="strategicGridOffset" min="0" max="1" step="0.01" value="0.11" />
             <label style="margin-top:10px">Continents: <span class="value" id="continentsValue">6</span></label>
             <input type="range" id="continents" min="3" max="24" step="1" value="6" />
         <label style="margin-top:10px">Sea level: <span class="value" id="seaValue">0.80</span></label>
@@ -1382,39 +1386,37 @@
         }
 
         // Context menu functions
-        function showContextMenu(event, tile) {
+        function showContextMenu(event, tileMesh) {
             const contextMenu = document.getElementById('context-menu');
             if (!contextMenu) return;
 
-            // Debug: context menu for tile
+            // Get strategic tile data
+            const tileData = tileMesh.userData.strategicTileData;
+            if (!tileData) return;
 
             // Build context menu based on tile type and player state
             let menuHTML = '';
 
             // Regular move option (always available for walkable tiles)
-            if (tile.userData.debugData.isWalkable) {
+            if (tileData.isWalkable) {
                 menuHTML += `<div class="context-menu-item" id="context-move-here" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #444;">Move Here</div>`;
             }
 
-            // Port-specific options
-            if (tile.userData.hasPort) {
+            // Port-specific options (check parent texture tile for port)
+            const parentTextureTile = tileData.textureParentId !== null ? textureTileMap.get(tileData.textureParentId) : null;
+            if (parentTextureTile && parentTextureTile.mesh && parentTextureTile.mesh.userData.hasPort) {
                 const currentLandmass = getCurrentLandmass();
-                const targetLandmass = tile.userData.portLandmass;
+                const targetLandmass = parentTextureTile.mesh.userData.portLandmass;
                 const playerOnPort = isPlayerOnPort();
 
                 // Only allow sailing if player is currently on a port and targeting a different landmass
                 if (playerOnPort && currentLandmass !== null && currentLandmass !== targetLandmass) {
                     menuHTML += `<div class="context-menu-item" id="context-sail-to-port" data-target-landmass="${targetLandmass}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #444;">🚢 Sail to Landmass ${targetLandmass}</div>`;
                 }
-                // If not on a port but can reach this port by land, show "Travel to Port" instead
-                else if (!playerOnPort && currentLandmass !== null && currentLandmass === targetLandmass) {
-                    // This will show "Move Here" from the walkable check above, which is appropriate
-                }
             }
 
             menuHTML += `<div class="context-menu-item" id="context-cancel" style="padding:8px 12px;cursor:pointer;">Cancel</div>`;
 
-            // Debug: Generated context menu
             contextMenu.innerHTML = menuHTML;
 
             // Add event listeners for new options
@@ -1434,7 +1436,7 @@
                     sailToPort.addEventListener('click', () => {
                         const targetLandmass = parseInt(sailToPort.dataset.targetLandmass);
                         if (contextMenuTargetTile) {
-                            travelToPortTile(contextMenuTargetTile.userData.tileId, targetLandmass);
+                            travelToPortTile(contextMenuTargetTile.userData.strategicTileId, targetLandmass);
                         }
                         hideContextMenu();
                     });
@@ -1452,7 +1454,7 @@
             contextMenu.style.left = event.clientX + 'px';
             contextMenu.style.top = event.clientY + 'px';
             contextMenuVisible = true;
-            contextMenuTargetTile = tile;
+            contextMenuTargetTile = tileMesh;
         }
 
         function hideContextMenu() {
@@ -1501,12 +1503,15 @@
             await playerCharacter.moveToTile(targetTileId, pathfinder);
         }
 
-        async function moveCharacterToTile(tile) {
-            if (!playerCharacter || !pathfinder || !tile) return;
+        async function moveCharacterToTile(tileMesh) {
+            if (!playerCharacter || !pathfinder || !tileMesh) return;
 
-            const tileId = tile.userData.tileId;
-            console.log(`Moving character to tile ${tileId} (${tile.userData.debugData.biomeType})`);
-            await playerCharacter.moveToTile(tileId, pathfinder);
+            // Get strategic tile ID from the mesh
+            const strategicTileId = tileMesh.userData.strategicTileId;
+            const tileData = tileMesh.userData.strategicTileData;
+
+            console.log(`Moving character to strategic tile ${strategicTileId} (${tileData.biomeType})`);
+            await playerCharacter.moveToTile(strategicTileId, pathfinder);
         }
 
         // Scene setup
@@ -1612,6 +1617,10 @@
 
         // biome settings with seed
         const settings = {
+            textureDetail: 9, // Texture grid detail level (visual/biome layer)
+            strategicDetail: 40, // Strategic grid detail level (units/buildings layer)
+            strategicGridOffset: 0.11, // Distance above texture surface (in world units)
+            strategicGridRadius: 50, // Number of tiles to render around mouse cursor
             continents: 6,
             seaLevel: 0.8,
             noiseAmp: 0.25,
@@ -2205,9 +2214,15 @@
 
         // Character movement system
         let characters = [];
-        let tileMap = new Map();
         let pathfinder = null;
         let playerCharacter = null;
+
+        // Dual-resolution hex grid system
+        let textureTileMap = new Map();  // Low-res grid for biomes/textures
+        let strategicTileMap = new Map(); // High-res grid for units/buildings/pathfinding
+        let strategicGridLines = null;    // Visual grid lines for strategic layer
+        let strategicTileGroup = null;    // Invisible meshes for raycasting strategic tiles
+        let hoveredStrategicTile = null;  // Currently hovered strategic tile
 
         function findPlayerStartTile() {
             // Find all land tiles (not ocean, not mountain)
@@ -2642,26 +2657,54 @@
 
         // Character movement system
         function buildTileGraph() {
-            tileMap.clear();
-            
-            // First pass: collect all tiles
+            textureTileMap.clear();
+
+            // First pass: collect all texture tiles (rendered meshes)
             scene.traverse((child) => {
                 if (child.userData && child.userData.isTile) {
                     const tileId = child.userData.tileId;
-                    tileMap.set(tileId, child);
+                    const debugData = child.userData.debugData;
+
+                    // Create simplified texture tile object
+                    const textureTile = {
+                        id: tileId,
+                        mesh: child,
+                        position: debugData.tileCenter.clone(),
+                        normal: debugData.tileNormal.clone(),
+                        neighbors: [],
+                        // Biome/terrain properties
+                        biomeType: debugData.biomeType,
+                        isWalkable: debugData.isWalkable,
+                        movementCost: debugData.movementCost,
+                        elevation: debugData.elevation,
+                        temperature: debugData.temperature
+                    };
+
+                    textureTileMap.set(tileId, textureTile);
                 }
             });
-            
-            console.log(`Built tile graph with ${tileMap.size} tiles`);
-            
-            // Second pass: find neighbors for each tile
+
+            console.log(`Built texture tile map with ${textureTileMap.size} tiles`);
+
+            // Second pass: find neighbors for texture tiles
             let tilesWithNeighbors = 0;
-            tileMap.forEach((tile, tileId) => {
-                const neighbors = findAdjacentTiles(tile, tileMap);
-                tile.userData.debugData.neighbors = neighbors;
-                if (neighbors.length > 0) tilesWithNeighbors++;
+            const originalTileMap = new Map();
+            scene.traverse((child) => {
+                if (child.userData && child.userData.isTile) {
+                    originalTileMap.set(child.userData.tileId, child);
+                }
             });
-            console.log(`${tilesWithNeighbors} tiles have neighbors`);
+
+            textureTileMap.forEach((tile, tileId) => {
+                const tileMesh = originalTileMap.get(tileId);
+                if (tileMesh) {
+                    const neighbors = findAdjacentTiles(tileMesh, originalTileMap);
+                    tileMesh.userData.debugData.neighbors = neighbors;
+                    tile.neighbors = neighbors;
+                    if (neighbors.length > 0) tilesWithNeighbors++;
+                }
+            });
+            console.log(`${tilesWithNeighbors} texture tiles have neighbors`);
         }
 
         function findAdjacentTiles(tile, tileMap) {
@@ -2690,12 +2733,643 @@
             return neighbors;
         }
 
+        // ============================================
+        // DUAL-RESOLUTION HEX GRID SYSTEM
+        // ============================================
+
+        /**
+         * Builds the strategic (high-resolution) hex grid for gameplay
+         * Creates a complete uniform hex grid using dual-polyhedron at higher detail
+         * This ensures proper tiling and neighbor relationships across the entire sphere
+         * @param {number} textureDetail - Detail level of the texture grid
+         * @param {number} strategicDetail - Detail level for strategic grid (higher = more tiles)
+         * @param {number} radius - Base sphere radius
+         */
+        function buildStrategicGrid(textureDetail, strategicDetail, radius) {
+            strategicTileMap.clear();
+
+            // Warn about performance for high detail levels
+            const estimatedTiles = Math.pow(4, strategicDetail) * 2.5;
+            if (strategicDetail > 15) {
+                console.warn(`⚠️ Strategic detail ${strategicDetail} will generate ~${Math.round(estimatedTiles).toLocaleString()} tiles. This may cause performance issues!`);
+            }
+
+            console.log(`Building strategic grid with dual-polyhedron (detail ${strategicDetail})...`);
+
+            // Generate high-detail icosahedron
+            const geom = new THREE.IcosahedronGeometry(radius, strategicDetail);
+            const pos = geom.attributes.position;
+
+            // Build unique vertices
+            const vertices = [];
+            const vertexMap = new Map();
+            for (let i = 0; i < pos.count; i++) {
+                const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+                const key = `${v.x.toFixed(8)}_${v.y.toFixed(8)}_${v.z.toFixed(8)}`;
+                if (!vertexMap.has(key)) {
+                    vertexMap.set(key, vertices.length);
+                    vertices.push(v);
+                }
+            }
+
+            // Build faces
+            const faces = [];
+            for (let i = 0; i < pos.count; i += 3) {
+                const vA = new THREE.Vector3().fromBufferAttribute(pos, i);
+                const vB = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+                const vC = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+
+                const keyA = `${vA.x.toFixed(8)}_${vA.y.toFixed(8)}_${vA.z.toFixed(8)}`;
+                const keyB = `${vB.x.toFixed(8)}_${vB.y.toFixed(8)}_${vB.z.toFixed(8)}`;
+                const keyC = `${vC.x.toFixed(8)}_${vC.y.toFixed(8)}_${vC.z.toFixed(8)}`;
+
+                const a = vertexMap.get(keyA);
+                const b = vertexMap.get(keyB);
+                const c = vertexMap.get(keyC);
+
+                if (a !== undefined && b !== undefined && c !== undefined) {
+                    faces.push({ a, b, c });
+                }
+            }
+
+            // Face centroids become hex boundary vertices
+            const centroids = faces.map(f =>
+                new THREE.Vector3()
+                    .add(vertices[f.a])
+                    .add(vertices[f.b])
+                    .add(vertices[f.c])
+                    .divideScalar(3)
+                    .normalize()
+            );
+
+            // Build vertex-to-faces mapping (each vertex becomes a hex center)
+            const vertexToFaces = new Map();
+            faces.forEach((face, faceIndex) => {
+                [face.a, face.b, face.c].forEach(vi => {
+                    if (!vertexToFaces.has(vi)) vertexToFaces.set(vi, []);
+                    vertexToFaces.get(vi).push(faceIndex);
+                });
+            });
+
+            // Build edge map for efficient neighbor finding
+            // In dual polyhedron, vertices sharing an edge in icosahedron are neighbors
+            const edgeMap = new Map();
+            faces.forEach(face => {
+                const edges = [
+                    [face.a, face.b].sort((a,b) => a-b),
+                    [face.b, face.c].sort((a,b) => a-b),
+                    [face.c, face.a].sort((a,b) => a-b)
+                ];
+                edges.forEach(([v1, v2]) => {
+                    const key = `${v1}_${v2}`;
+                    if (!edgeMap.has(key)) edgeMap.set(key, []);
+                    edgeMap.get(key).push(v1, v2);
+                });
+            });
+
+            // Build neighbor map from edge structure
+            const neighborMap = new Map();
+            edgeMap.forEach((verts) => {
+                const uniqueVerts = [...new Set(verts)];
+                if (uniqueVerts.length === 2) {
+                    const [v1, v2] = uniqueVerts;
+                    if (!neighborMap.has(v1)) neighborMap.set(v1, new Set());
+                    if (!neighborMap.has(v2)) neighborMap.set(v2, new Set());
+                    neighborMap.get(v1).add(v2);
+                    neighborMap.get(v2).add(v1);
+                }
+            });
+
+            // Create strategic hex tiles
+            vertexToFaces.forEach((faceIndices, vertexIndex) => {
+                const vertex = vertices[vertexIndex];
+                const normal = vertex.clone().normalize();
+
+                // Get and sort boundary points
+                const boundaryPoints = faceIndices.map(fIdx => centroids[fIdx]);
+                const sortedBoundary = sortBoundaryPointsSimple(boundaryPoints, normal);
+
+                // Find nearest texture parent (for properties like biome, walkability, elevation)
+                const basePos = normal.clone().multiplyScalar(radius);
+                const textureParent = findParentTextureTile(basePos);
+
+                // Get elevation from parent texture tile
+                let elevationScale = 1.0;
+                if (textureParent && textureParent.mesh) {
+                    const debugData = textureParent.mesh.userData.debugData;
+                    const elevation = debugData.elevation || 0;
+                    let extrude = (elevation - settings.seaLevel);
+                    extrude = Math.max(-0.03, Math.min(0.08, extrude * 0.18));
+                    elevationScale = 1.0 + extrude;
+                }
+
+                // Apply elevation to center and boundary
+                // Use additive offset to ensure grid is ALWAYS above surface
+                // Needs to be large enough to account for interpolated vertex elevations on texture tiles
+                const gridOffsetDistance = settings.strategicGridOffset; // Adjustable via slider
+
+                // Center position: base elevation + fixed offset along normal
+                const basePosition = normal.clone().multiplyScalar(radius * elevationScale);
+                const position = basePosition.add(normal.clone().multiplyScalar(gridOffsetDistance));
+
+                // For boundary vertices, get elevation and apply same fixed offset
+                const elevatedBoundary = sortedBoundary.map(b => {
+                    const boundaryNormal = b.clone().normalize();
+                    const boundaryPos = boundaryNormal.clone().multiplyScalar(radius);
+                    const boundaryParent = findParentTextureTile(boundaryPos);
+
+                    let boundaryElevationScale = elevationScale; // Default to center elevation
+                    if (boundaryParent && boundaryParent.mesh) {
+                        const boundaryDebugData = boundaryParent.mesh.userData.debugData;
+                        const boundaryElevation = boundaryDebugData.elevation || 0;
+                        let boundaryExtrude = (boundaryElevation - settings.seaLevel);
+                        boundaryExtrude = Math.max(-0.03, Math.min(0.08, boundaryExtrude * 0.18));
+                        boundaryElevationScale = 1.0 + boundaryExtrude;
+                    }
+
+                    // Base position with elevation + fixed offset along normal
+                    const boundaryBase = boundaryNormal.clone().multiplyScalar(radius * boundaryElevationScale);
+                    return boundaryBase.add(boundaryNormal.clone().multiplyScalar(gridOffsetDistance));
+                });
+
+                // Get neighbors from pre-built neighbor map (O(1) lookup!)
+                const neighbors = neighborMap.has(vertexIndex) ?
+                    Array.from(neighborMap.get(vertexIndex)) : [];
+
+                const strategicTile = {
+                    id: vertexIndex,
+                    position: position,
+                    normal: normal.clone(),
+                    boundary: elevatedBoundary,
+                    neighbors: neighbors,
+                    textureParentId: textureParent ? textureParent.id : null,
+                    biomeType: textureParent ? textureParent.biomeType : 'ocean',
+                    isWalkable: textureParent ? textureParent.isWalkable : false,
+                    movementCost: textureParent ? textureParent.movementCost : Infinity,
+                    elevation: textureParent ? textureParent.elevation : 0,
+                    temperature: textureParent ? textureParent.temperature : 0
+                };
+
+                strategicTileMap.set(vertexIndex, strategicTile);
+            });
+
+            // Neighbor relationships already built efficiently using edge structure
+            let tilesWithNeighbors = 0;
+            strategicTileMap.forEach((tile) => {
+                if (tile.neighbors.length > 0) tilesWithNeighbors++;
+            });
+            console.log(`${tilesWithNeighbors} strategic tiles have neighbors (optimized O(n) algorithm)`);
+
+            geom.dispose();
+
+            const ratio = (strategicTileMap.size / textureTileMap.size).toFixed(1);
+            console.log(`Strategic grid: ${strategicTileMap.size} hexes (${ratio}x more than ${textureTileMap.size} texture tiles)`);
+            console.log(`Strategic tiles properly tile across entire sphere for movement/pathfinding`);
+        }
+
+        /**
+         * Simple boundary sorting using angle from normal
+         */
+        function sortBoundaryPointsSimple(points, normal) {
+            if (points.length === 0) return points;
+
+            const ref = new THREE.Vector3(1, 0, 0);
+            if (Math.abs(normal.dot(ref)) > 0.9) ref.set(0, 1, 0);
+
+            const tangent = new THREE.Vector3().crossVectors(normal, ref).normalize();
+            const bitangent = new THREE.Vector3().crossVectors(normal, tangent);
+
+            const sorted = points.map(p => {
+                const angle = Math.atan2(p.dot(bitangent), p.dot(tangent));
+                return { point: p, angle };
+            }).sort((a, b) => a.angle - b.angle);
+
+            return sorted.map(item => item.point);
+        }
+
+        /**
+         * Finds which texture tile contains a given strategic tile position
+         * @param {THREE.Vector3} strategicPos - Position of strategic tile
+         * @returns {Object|null} - Texture tile data or null
+         */
+        function findParentTextureTile(strategicPos) {
+            let closestTile = null;
+            let minDist = Infinity;
+
+            textureTileMap.forEach((textureTile) => {
+                const dist = strategicPos.distanceTo(textureTile.position);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestTile = textureTile;
+                }
+            });
+
+            return closestTile;
+        }
+
+        /**
+         * [REMOVED] Old O(n²) neighbor finding - replaced with optimized O(n) edge-based algorithm
+         */
+
+        /**
+         * Renders grid lines for the strategic layer
+         * Creates invisible hexagon meshes for raycasting (all tiles)
+         * Grid lines are rendered dynamically around mouse cursor only
+         */
+        function renderStrategicGrid() {
+            // Remove old meshes
+            if (strategicTileGroup) {
+                scene.remove(strategicTileGroup);
+                strategicTileGroup.children.forEach(child => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) child.material.dispose();
+                });
+                strategicTileGroup = null;
+            }
+
+            strategicTileGroup = new THREE.Group();
+
+            // Create invisible raycast meshes for ALL tiles (needed for mouse interaction)
+            strategicTileMap.forEach((tile, tileId) => {
+                const boundary = tile.boundary || [];
+                if (boundary.length < 3) return;
+
+                // Create invisible hexagon mesh for raycasting
+                // Use world-space positions directly to avoid distortion from mixed elevations
+                const hexGeometry = new THREE.BufferGeometry();
+                const positions = [];
+
+                // Create triangulated hexagon from boundary vertices
+                for (let i = 0; i < boundary.length; i++) {
+                    const current = boundary[i];
+                    const next = boundary[(i + 1) % boundary.length];
+
+                    // Create triangle: center -> current boundary -> next boundary
+                    positions.push(tile.position.x, tile.position.y, tile.position.z);
+                    positions.push(current.x, current.y, current.z);
+                    positions.push(next.x, next.y, next.z);
+                }
+
+                hexGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                hexGeometry.computeVertexNormals();
+
+                // Invisible material for raycasting
+                const hexMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0,  // Invisible
+                    side: THREE.DoubleSide
+                });
+
+                const hexMesh = new THREE.Mesh(hexGeometry, hexMaterial);
+                hexMesh.userData.isStrategicTile = true;
+                hexMesh.userData.strategicTileId = tileId;
+                hexMesh.userData.strategicTileData = tile;
+
+                strategicTileGroup.add(hexMesh);
+            });
+
+            scene.add(strategicTileGroup);
+
+            const textureTileCount = textureTileMap.size;
+            const strategicTileCount = strategicTileMap.size;
+            const ratio = (strategicTileCount / textureTileCount).toFixed(1);
+            console.log(`Strategic grid: ${strategicTileCount} hexagons`);
+            console.log(`Texture tiles: ${textureTileCount}, Strategic tiles: ${strategicTileCount} (${ratio}x more)`);
+            console.log(`Created ${strategicTileGroup.children.length} invisible meshes for strategic tile raycasting`);
+            console.log(`Grid lines will render dynamically around mouse cursor (radius: ${settings.strategicGridRadius} tiles)`);
+        }
+
+        /**
+         * Updates grid lines to show only tiles near the specified center tile
+         * @param {number|null} centerTileId - ID of tile to center grid around, or null to hide grid
+         */
+        function updateStrategicGridLines(centerTileId) {
+            // Remove old grid lines
+            if (strategicGridLines) {
+                scene.remove(strategicGridLines);
+                if (strategicGridLines.geometry) strategicGridLines.geometry.dispose();
+                if (strategicGridLines.material) strategicGridLines.material.dispose();
+                strategicGridLines = null;
+            }
+
+            // If no center tile, don't render any lines
+            if (centerTileId === null) return;
+
+            const centerTile = strategicTileMap.get(centerTileId);
+            if (!centerTile) return;
+
+            // Find N nearest tiles using BFS from center tile
+            const nearbyTiles = new Set();
+            const queue = [centerTileId];
+            const visited = new Set([centerTileId]);
+            nearbyTiles.add(centerTileId);
+
+            while (queue.length > 0 && nearbyTiles.size < settings.strategicGridRadius) {
+                const currentId = queue.shift();
+                const currentTile = strategicTileMap.get(currentId);
+
+                if (currentTile && currentTile.neighbors) {
+                    for (const neighborId of currentTile.neighbors) {
+                        if (!visited.has(neighborId) && nearbyTiles.size < settings.strategicGridRadius) {
+                            visited.add(neighborId);
+                            nearbyTiles.add(neighborId);
+                            queue.push(neighborId);
+                        }
+                    }
+                }
+            }
+
+            // Generate grid lines for nearby tiles only
+            const gridLines = [];
+            nearbyTiles.forEach(tileId => {
+                const tile = strategicTileMap.get(tileId);
+                if (!tile) return;
+
+                const boundary = tile.boundary || [];
+                if (boundary.length < 3) return;
+
+                // Draw hexagon boundary
+                for (let i = 0; i < boundary.length; i++) {
+                    const current = boundary[i];
+                    const next = boundary[(i + 1) % boundary.length];
+                    gridLines.push(current.clone());
+                    gridLines.push(next.clone());
+                }
+            });
+
+            if (gridLines.length > 0) {
+                const geometry = new THREE.BufferGeometry().setFromPoints(gridLines);
+                const material = new THREE.LineBasicMaterial({
+                    color: 0xFFFFFF,
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.4
+                });
+
+                strategicGridLines = new THREE.LineSegments(geometry, material);
+                scene.add(strategicGridLines);
+            }
+        }
+
+        // ============================================
+        // ENTITY PLACEMENT SYSTEM
+        // ============================================
+
+        /**
+         * Entity manager for tracking buildings, units, and their occupancy on subtiles
+         */
+        class EntityManager {
+            constructor() {
+                this.entities = new Map(); // entityId -> entity data
+                this.subtileOccupancy = new Map(); // subtileId -> entityId (for single-tile entities)
+                this.nextEntityId = 0;
+            }
+
+            /**
+             * Places an entity (building or unit) on a strategic tile
+             * @param {string|number} strategicTileId - ID of the strategic tile to place on
+             * @param {Object} entityData - Entity data (type, mesh, etc.)
+             * @returns {string|null} - Entity ID if placed successfully, null otherwise
+             */
+            placeEntity(strategicTileId, entityData) {
+                // Check if strategic tile exists
+                const tile = strategicTileMap.get(strategicTileId);
+                if (!tile) {
+                    console.warn(`Cannot place entity: strategic tile ${strategicTileId} not found`);
+                    return null;
+                }
+
+                // Check if tile is already occupied
+                if (this.subtileOccupancy.has(strategicTileId)) {
+                    console.warn(`Cannot place entity: strategic tile ${strategicTileId} is already occupied`);
+                    return null;
+                }
+
+                // Check if tile is walkable
+                if (!tile.isWalkable) {
+                    console.warn(`Cannot place entity: strategic tile ${strategicTileId} is not walkable`);
+                    return null;
+                }
+
+                // Create entity
+                const entityId = `entity_${this.nextEntityId++}`;
+                const entity = {
+                    id: entityId,
+                    subTileId: strategicTileId,
+                    position: tile.position.clone(),
+                    ...entityData
+                };
+
+                this.entities.set(entityId, entity);
+                this.subtileOccupancy.set(strategicTileId, entityId);
+
+                console.log(`Placed entity ${entityId} at strategic tile ${strategicTileId}`);
+                return entityId;
+            }
+
+            /**
+             * Removes an entity from the map
+             * @param {string} entityId - ID of entity to remove
+             */
+            removeEntity(entityId) {
+                const entity = this.entities.get(entityId);
+                if (!entity) return;
+
+                // Clear occupancy
+                this.subtileOccupancy.delete(entity.subTileId);
+                this.entities.delete(entityId);
+
+                console.log(`Removed entity ${entityId}`);
+            }
+
+            /**
+             * Moves an entity from one strategic tile to another
+             * @param {string} entityId - ID of entity to move
+             * @param {string|number} newTileId - Destination strategic tile ID
+             * @returns {boolean} - True if moved successfully
+             */
+            moveEntity(entityId, newTileId) {
+                const entity = this.entities.get(entityId);
+                if (!entity) return false;
+
+                const newTile = strategicTileMap.get(newTileId);
+                if (!newTile) return false;
+
+                // Check if destination is occupied
+                if (this.subtileOccupancy.has(newTileId)) {
+                    return false;
+                }
+
+                // Clear old occupancy
+                this.subtileOccupancy.delete(entity.subTileId);
+
+                // Update entity
+                entity.subTileId = newTileId;
+                entity.position = newTile.position.clone();
+
+                // Set new occupancy
+                this.subtileOccupancy.set(newTileId, entityId);
+
+                return true;
+            }
+
+            /**
+             * Checks if a subtile is occupied
+             * @param {string} subTileId - Subtile to check
+             * @returns {boolean}
+             */
+            isSubTileOccupied(subTileId) {
+                return this.subtileOccupancy.has(subTileId);
+            }
+
+            /**
+             * Gets entity at a subtile
+             * @param {string} subTileId - Subtile to check
+             * @returns {Object|null} - Entity data or null
+             */
+            getEntityAt(subTileId) {
+                const entityId = this.subtileOccupancy.get(subTileId);
+                return entityId ? this.entities.get(entityId) : null;
+            }
+
+            /**
+             * Finds a random unoccupied walkable strategic tile
+             * @param {string} biomeType - Optional biome filter
+             * @returns {string|number|null} - Strategic tile ID or null
+             */
+            findRandomUnoccupiedSubtile(biomeType = null) {
+                const candidates = [];
+
+                strategicTileMap.forEach((tile, tileId) => {
+                    if (!tile.isWalkable) return;
+                    if (this.isSubTileOccupied(tileId)) return;
+                    if (biomeType && tile.biomeType !== biomeType) return;
+
+                    candidates.push(tileId);
+                });
+
+                if (candidates.length === 0) return null;
+
+                const randomIndex = Math.floor(Math.random() * candidates.length);
+                return candidates[randomIndex];
+            }
+
+            /**
+             * Gets all entities of a specific type
+             * @param {string} type - Entity type to filter
+             * @returns {Array} - Array of entities
+             */
+            getEntitiesByType(type) {
+                const results = [];
+                this.entities.forEach(entity => {
+                    if (entity.type === type) {
+                        results.push(entity);
+                    }
+                });
+                return results;
+            }
+        }
+
+        // Global entity manager instance
+        let entityManager = new EntityManager();
+
+        /**
+         * Helper: Find the nearest strategic tile to a 3D world position
+         */
+        function findNearestStrategicTile(worldPosition) {
+            let nearest = null;
+            let minDist = Infinity;
+
+            strategicTileMap.forEach((tile) => {
+                const dist = worldPosition.distanceTo(tile.position);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = tile;
+                }
+            });
+
+            return nearest;
+        }
+
+        /**
+         * Helper: Get all strategic tiles that belong to a texture tile
+         */
+        function getStrategicTilesInTextureTile(textureTileId) {
+            const tiles = [];
+            strategicTileMap.forEach((tile) => {
+                if (tile.textureParentId === textureTileId) {
+                    tiles.push(tile);
+                }
+            });
+            return tiles;
+        }
+
 
         class AStarPathfinder {
             constructor(tileMap) {
                 this.tileMap = tileMap;
+                // Auto-detect format: THREE.Mesh tiles have userData, plain objects don't
+                const firstEntry = tileMap.values().next().value;
+                this.isSubTileFormat = firstEntry && !firstEntry.userData;
             }
-            
+
+            // Helper: Get neighbors from tile (works with both formats)
+            getNeighbors(tileId) {
+                const tile = this.tileMap.get(tileId);
+                if (!tile) return [];
+                if (this.isSubTileFormat) {
+                    return tile.neighbors || [];
+                } else {
+                    return tile.userData.debugData.neighbors || [];
+                }
+            }
+
+            // Helper: Get position from tile (works with both formats)
+            getPosition(tileId) {
+                const tile = this.tileMap.get(tileId);
+                if (!tile) return null;
+                if (this.isSubTileFormat) {
+                    return tile.position;
+                } else {
+                    return tile.userData.debugData.tileNormal || tile.userData.debugData.tileCenter;
+                }
+            }
+
+            // Helper: Check if tile is walkable (works with both formats)
+            isWalkable(tileId) {
+                const tile = this.tileMap.get(tileId);
+                if (!tile) return false;
+                if (this.isSubTileFormat) {
+                    return tile.isWalkable !== false;
+                } else {
+                    return tile.userData.debugData.isWalkable !== false;
+                }
+            }
+
+            // Helper: Get movement cost (works with both formats)
+            getTileMovementCost(tileId) {
+                const tile = this.tileMap.get(tileId);
+                if (!tile) return Infinity;
+                if (this.isSubTileFormat) {
+                    return tile.movementCost !== undefined ? tile.movementCost : 1.0;
+                } else {
+                    return tile.userData.debugData.movementCost !== undefined ?
+                        tile.userData.debugData.movementCost : 1.0;
+                }
+            }
+
+            // Helper: Get elevation (works with both formats)
+            getElevation(tileId) {
+                const tile = this.tileMap.get(tileId);
+                if (!tile) return 0;
+                if (this.isSubTileFormat) {
+                    return tile.elevation || 0;
+                } else {
+                    return tile.userData.debugData.elevation || 0;
+                }
+            }
+
             findPath(startTileId, goalTileId) {
                 // Check if both tiles exist
                 if (!this.tileMap.has(startTileId)) {
@@ -2706,21 +3380,21 @@
                     console.log(`Goal tile ${goalTileId} not found in tileMap`);
                     return null;
                 }
-                
+
                 const openSet = new Set([startTileId]);
                 const cameFrom = new Map();
                 const gScore = new Map();
                 const fScore = new Map();
-                
+
                 // Initialize scores
                 this.tileMap.forEach((tile, id) => {
                     gScore.set(id, Infinity);
                     fScore.set(id, Infinity);
                 });
-                
+
                 gScore.set(startTileId, 0);
                 fScore.set(startTileId, this.heuristic(startTileId, goalTileId));
-                
+
                 while (openSet.size > 0) {
                     // Find tile with lowest fScore
                     let current = null;
@@ -2731,63 +3405,60 @@
                             current = tileId;
                         }
                     }
-                    
+
                     if (current === goalTileId) {
                         const path = this.reconstructPath(cameFrom, current);
-                        console.log(`Path found with ${path.length} tiles`);
+                        console.log(`Path found with ${path.length} ${this.isSubTileFormat ? 'subtiles' : 'tiles'}`);
                         return path;
                     }
-                    
+
                     openSet.delete(current);
-                    
-                    // Check neighbors
-                    const tile = this.tileMap.get(current);
-                    const neighbors = tile.userData.debugData.neighbors || [];
-                    
+
+                    // Check neighbors using format-agnostic helper
+                    const neighbors = this.getNeighbors(current);
+
                     for (const neighborId of neighbors) {
-                        const neighbor = this.tileMap.get(neighborId);
-                        if (!neighbor || !neighbor.userData.debugData.isWalkable) {
+                        if (!this.isWalkable(neighborId)) {
                             continue;
                         }
-                        
+
                         const tentativeG = gScore.get(current) + this.getMovementCost(current, neighborId);
-                        
+
                         if (tentativeG < gScore.get(neighborId)) {
                             cameFrom.set(neighborId, current);
                             gScore.set(neighborId, tentativeG);
                             fScore.set(neighborId, tentativeG + this.heuristic(neighborId, goalTileId));
-                            
+
                             if (!openSet.has(neighborId)) {
                                 openSet.add(neighborId);
                             }
                         }
                     }
                 }
-                
+
                 return null; // No path found
             }
-            
+
             heuristic(tileIdA, tileIdB) {
-                const posA = this.tileMap.get(tileIdA).userData.debugData.tileNormal;
-                const posB = this.tileMap.get(tileIdB).userData.debugData.tileNormal;
+                const posA = this.getPosition(tileIdA);
+                const posB = this.getPosition(tileIdB);
+                if (!posA || !posB) return Infinity;
                 return posA.distanceTo(posB);
             }
-            
+
             getMovementCost(fromTileId, toTileId) {
-                const toTile = this.tileMap.get(toTileId);
-                let cost = toTile.userData.debugData.movementCost || 1.0;
-                
+                let cost = this.getTileMovementCost(toTileId);
+
                 // Add elevation cost
-                const fromTile = this.tileMap.get(fromTileId);
                 const elevationDiff = Math.abs(
-                    fromTile.userData.debugData.elevation - 
-                    toTile.userData.debugData.elevation
+                    this.getElevation(fromTileId) -
+                    this.getElevation(toTileId)
                 );
                 cost += elevationDiff * 2; // Steep terrain costs more
-                
+
                 return cost;
             }
-            
+
             reconstructPath(cameFrom, current) {
                 const path = [current];
                 while (cameFrom.has(current)) {
@@ -2832,14 +3503,33 @@
             
             positionCharacter() {
                 const tile = this.tileMap.get(this.currentTileId);
-                const tileData = tile.userData.debugData;
+                if (!tile) {
+                    console.warn(`Tile ${this.currentTileId} not found in tileMap`);
+                    return;
+                }
+
+                // Check if this is a strategic tile (plain object) or texture tile (has userData)
+                const isStrategicTile = !tile.userData;
+
+                let tilePosition, tileNormal;
+
+                if (isStrategicTile) {
+                    // Strategic tile - use tile.position and tile.normal
+                    tilePosition = tile.position;
+                    tileNormal = tile.normal;
+                } else {
+                    // Texture tile - use userData.debugData
+                    const tileData = tile.userData.debugData;
+                    tilePosition = tileData.tileCenter;
+                    tileNormal = tileData.tileNormal;
+                }
 
                 // Position on tile surface using the tile's actual center position
-                this.mesh.position.copy(tileData.tileCenter);
+                this.mesh.position.copy(tilePosition);
 
                 // Add height offset - sailboat needs to be above surface
                 const heightOffset = this.isShipTravel ? 0.25 : 0.2;
-                this.mesh.position.add(tileData.tileNormal.clone().multiplyScalar(heightOffset));
+                this.mesh.position.add(tileNormal.clone().multiplyScalar(heightOffset));
 
                 // Both use same rotation when stationary
                 this.mesh.rotation.set(0, 0, 0);
@@ -3117,35 +3807,65 @@
                 playerCharacter = null;
             }
 
-            // Find the castle tile
-            let castleTileId = null;
-            let castleTile = null;
+            // Find the castle's position from texture tile, then find nearest strategic tile
+            let castlePosition = null;
             scene.traverse((child) => {
-                if (child.userData && child.userData.isPlayerStart) {
-                    castleTileId = child.userData.tileId;
-                    castleTile = child;
+                if (child.userData && child.userData.isPlayerStart && child.userData.debugData) {
+                    castlePosition = child.userData.debugData.tileCenter.clone();
                 }
             });
 
-            if (castleTileId === null) {
-                console.log('No castle tile found, using first land tile');
-                // Fallback to first land tile
-                tileMap.forEach((tile, tileId) => {
-                    if (tile.userData.debugData.isWalkable && castleTileId === null) {
-                        castleTileId = tileId;
-                        castleTile = tile;
+            // Find the nearest strategic tile to the castle position
+            let startStrategicTileId = null;
+            let startStrategicTile = null;
+
+            if (castlePosition) {
+                startStrategicTile = findNearestStrategicTile(castlePosition);
+                if (startStrategicTile) {
+                    startStrategicTileId = startStrategicTile.id;
+                }
+            }
+
+            if (startStrategicTileId === null) {
+                console.log('No castle tile found, using first walkable strategic tile');
+                // Fallback to first walkable strategic tile
+                strategicTileMap.forEach((tile) => {
+                    if (tile.isWalkable && startStrategicTileId === null) {
+                        startStrategicTileId = tile.id;
+                        startStrategicTile = tile;
                     }
                 });
             }
 
-            if (castleTileId !== null) {
-                playerCharacter = new Character(castleTileId, tileMap);
+            if (startStrategicTileId !== null) {
+                // Use strategicTileMap instead of tileMap
+                playerCharacter = new Character(startStrategicTileId, strategicTileMap);
                 characters.push(playerCharacter);
-                console.log(`Created player character at tile ${castleTileId}`);
+                console.log(`Created player character at strategic tile ${startStrategicTileId}`);
 
                 // Focus camera on the player's starting position
-                focusCameraOnTile(castleTile);
+                if (startStrategicTile) {
+                    focusCameraOnStrategicTile(startStrategicTile);
+                }
             }
+        }
+
+        function focusCameraOnStrategicTile(tile) {
+            if (!tile) return;
+
+            const tileCenter = tile.position.clone();
+            const tileNormal = tile.normal.clone();
+
+            // Position camera at a nice distance from the tile, but keep planet center as target
+            const cameraDistance = 15; // Adjust this for desired zoom level
+            const cameraPosition = tileCenter.clone().add(tileNormal.clone().multiplyScalar(cameraDistance));
+
+            // Set camera position to look at the player tile
+            camera.position.copy(cameraPosition);
+
+            // Keep controls target at planet center for smooth orbiting
+            controls.target.set(0, 0, 0);
+            controls.update();
         }
 
         function focusCameraOnTile(tile) {
@@ -3421,14 +4141,14 @@
             scene.remove(obj);
         }
 
-        async function buildPlanet(detail) {
-            console.log('buildPlanet()', { detail, settings: { ...settings } });
+        async function buildPlanet() {
+            console.log('buildPlanet()', { textureDetail: settings.textureDetail, strategicDetail: settings.strategicDetail, settings: { ...settings } });
             // reseed simplex with current seed to ensure determinism across rebuilds
             simplex = new SimplexNoise(settings.seed.toString());
             
             // Clear hover state
             hoveredTile = null;
-            
+
             // Clean previous
             disposeObject(solidSphere); disposeObject(wireframe); disposeObject(tileGroup); disposeObject(cloudSphere); disposeObject(portsGroup);
 
@@ -3442,8 +4162,19 @@
             portsGroup.clear();
             scene.add(portsGroup);
 
+            // Clear dual-resolution grid system
+            textureTileMap.clear();
+            strategicTileMap.clear();
+            entityManager = new EntityManager();
+            if (strategicGridLines) {
+                scene.remove(strategicGridLines);
+                if (strategicGridLines.geometry) strategicGridLines.geometry.dispose();
+                if (strategicGridLines.material) strategicGridLines.material.dispose();
+                strategicGridLines = null;
+            }
+
             // Base icosahedron
-            const geom = new THREE.IcosahedronGeometry(radius, detail);
+            const geom = new THREE.IcosahedronGeometry(radius, settings.textureDetail);
 
             // No fallback sphere needed - tiles render directly
             solidSphere = null;
@@ -3956,58 +4687,11 @@
                     movementCost: isOcean ? Infinity : 1.0, // Movement cost (ocean = impassable)
                     originalColor: tileColor // Store the original tile color for shader materials
                 };
-                
+
                 tileGroup.add(m);
 
-                // Add rounded corner highlighting outline
-                const outlinePos = [];
-                const cornerRadius = 0.08; // Radius for rounded corners
-                const cornerSegments = 3; // Segments per rounded corner
-                
-                for (let i = 0; i < boundary.length; i++) {
-                    const current = boundary[i].clone().multiplyScalar(radius * boundaryElevations[i]);
-                    const next = boundary[(i + 1) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i + 1) % boundary.length]);
-                    const prev = boundary[(i - 1 + boundary.length) % boundary.length].clone().multiplyScalar(radius * boundaryElevations[(i - 1 + boundary.length) % boundary.length]);
-                    
-                    // Calculate vectors for corner rounding
-                    const toPrev = prev.clone().sub(current).normalize();
-                    const toNext = next.clone().sub(current).normalize();
-                    
-                    // Create rounded corner
-                    const cornerStart = current.clone().add(toPrev.clone().multiplyScalar(cornerRadius));
-                    const cornerEnd = current.clone().add(toNext.clone().multiplyScalar(cornerRadius));
-                    
-                    // Add corner start point
-                    outlinePos.push(cornerStart.x, cornerStart.y, cornerStart.z);
-                    
-                    // Add rounded corner points
-                    for (let j = 1; j <= cornerSegments; j++) {
-                        const t = j / (cornerSegments + 1);
-                        const cornerPoint = cornerStart.clone().lerp(cornerEnd, t);
-                        // Curve the corner slightly
-                        const curvedPoint = cornerPoint.clone().lerp(current, 0.2 * Math.sin(t * Math.PI));
-                        outlinePos.push(curvedPoint.x, curvedPoint.y, curvedPoint.z);
-                    }
-                    
-                    // Add corner end point
-                    outlinePos.push(cornerEnd.x, cornerEnd.y, cornerEnd.z);
-                }
-                
-                // Close the loop back to first point
-                if (outlinePos.length > 0) {
-                    outlinePos.push(outlinePos[0], outlinePos[1], outlinePos[2]);
-                }
-                
-                const outlineGeom = new THREE.BufferGeometry();
-                outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3));
-                const outlineMat = new THREE.LineBasicMaterial({ 
-                    color: 0x000000, // black borders
-                    linewidth: 2,
-                    transparent: true,
-                    opacity: settings.outlineAlpha
-                });
-                const outline = new THREE.Line(outlineGeom, outlineMat);
-                tileGroup.add(outline);
+                // Hex-level outline rendering disabled - now using subtile grid for visual boundaries
+                // The subdivision system provides finer-grained grid lines at the tactical scale
             });
             scene.add(tileGroup);
             
@@ -4023,9 +4707,18 @@
             // Apply tiny scale immediately after boats are generated
             applyTinyBoatScale();
             
-            // Build tile graph and create character system
+            // Build texture tile graph (low-res layer for biomes)
             buildTileGraph();
-            pathfinder = new AStarPathfinder(tileMap);
+
+            // Build strategic grid (high-res layer for gameplay)
+            // Uniform hex grid at higher detail for proper tiling and movement
+            // Each detail level increases tiles by ~4x
+            buildStrategicGrid(settings.textureDetail, settings.strategicDetail, radius);
+            renderStrategicGrid();
+
+            // Create pathfinder using strategic tile map
+            pathfinder = new AStarPathfinder(strategicTileMap);
+
             createPlayerCharacter();
 
             // Place shipping ports after tile graph is built (requires neighbors)
@@ -4070,8 +4763,12 @@
         }
 
         // UI
-        const detailSlider = document.getElementById('detail');
-        const detailValue = document.getElementById('detailValue');
+        const textureDetailSlider = document.getElementById('textureDetail');
+        const textureDetailValue = document.getElementById('textureDetailValue');
+        const strategicDetailSlider = document.getElementById('strategicDetail');
+        const strategicDetailValue = document.getElementById('strategicDetailValue');
+        const strategicGridOffsetSlider = document.getElementById('strategicGridOffset');
+        const strategicGridOffsetValue = document.getElementById('strategicGridOffsetValue');
         const continentsSlider = document.getElementById('continents');
         const continentsValue = document.getElementById('continentsValue');
         const seaSlider = document.getElementById('sea');
@@ -4088,20 +4785,51 @@
         const cloudOpacityValue = document.getElementById('cloudOpacityValue');
         const regenBtn = document.getElementById('regen');
 
-        async function setDetail(val) {
-            detailValue.textContent = val;
-            lastDetail = parseInt(val,10);
-            console.log('detail changed ->', lastDetail);
-            await buildPlanet(lastDetail);
+        async function setTextureDetail(val) {
+            settings.textureDetail = parseInt(val, 10);
+            textureDetailValue.textContent = settings.textureDetail;
+            console.log('texture detail changed ->', settings.textureDetail);
+            await updateAndRebuild('textureDetail');
         }
+
+        async function setStrategicDetail(val) {
+            settings.strategicDetail = parseInt(val, 10);
+            strategicDetailValue.textContent = settings.strategicDetail;
+
+            // Show performance warning for high detail levels
+            const warningSpan = document.getElementById('strategicWarning');
+            const estimatedTiles = Math.pow(4, settings.strategicDetail) * 2.5;
+            if (settings.strategicDetail > 15) {
+                warningSpan.textContent = `(~${Math.round(estimatedTiles / 1000).toLocaleString()}K tiles - may lag)`;
+            } else if (settings.strategicDetail > 13) {
+                warningSpan.textContent = `(~${Math.round(estimatedTiles / 1000).toLocaleString()}K tiles)`;
+            } else {
+                warningSpan.textContent = '';
+            }
+
+            console.log('strategic detail changed ->', settings.strategicDetail);
+            await updateAndRebuild('strategicDetail');
+        }
+
+        async function setStrategicGridOffset(val) {
+            settings.strategicGridOffset = parseFloat(val);
+            strategicGridOffsetValue.textContent = settings.strategicGridOffset.toFixed(2);
+            console.log('strategic grid offset changed ->', settings.strategicGridOffset);
+            await updateAndRebuild('strategicGridOffset');
+        }
+
         async function updateAndRebuild(reason) {
             if (reason) console.log('rebuild reason:', reason);
             setSeedLabel();
-            await buildPlanet(lastDetail);
+            await buildPlanet();
         }
 
-        detailSlider.addEventListener('input', e => setDetail(e.target.value));
-        detailSlider.addEventListener('change', e => setDetail(e.target.value));
+        textureDetailSlider.addEventListener('input', e => setTextureDetail(e.target.value));
+        textureDetailSlider.addEventListener('change', e => setTextureDetail(e.target.value));
+        strategicDetailSlider.addEventListener('input', e => setStrategicDetail(e.target.value));
+        strategicDetailSlider.addEventListener('change', e => setStrategicDetail(e.target.value));
+        strategicGridOffsetSlider.addEventListener('input', e => setStrategicGridOffset(e.target.value));
+        strategicGridOffsetSlider.addEventListener('change', e => setStrategicGridOffset(e.target.value));
 
         function onContinents(val) {
             settings.continents = parseInt(val,10);
@@ -4629,7 +5357,11 @@
 
         // Initial
         setSeedLabel();
-        setDetail(detailSlider.value);
+        // Initialize with settings values
+        textureDetailValue.textContent = settings.textureDetail;
+        strategicDetailValue.textContent = settings.strategicDetail;
+        strategicGridOffsetValue.textContent = settings.strategicGridOffset.toFixed(2);
+        buildPlanet();
 
         // Resize
         // Mouse hover functionality
@@ -4637,48 +5369,54 @@
             // Calculate mouse position in normalized device coordinates (-1 to +1)
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            
+
             // Update raycaster
             raycaster.setFromCamera(mouse, camera);
-            
-            if (tileGroup) {
-                // Filter to only tile meshes (not outlines)
-                const tileMeshes = tileGroup.children.filter(child => 
-                    child.userData && child.userData.isTile === true
-                );
-                
-                // Find intersections with tile meshes only
-                const intersects = raycaster.intersectObjects(tileMeshes, false);
-                
+
+            if (strategicTileGroup) {
+                // Find intersections with strategic tile meshes
+                const intersects = raycaster.intersectObjects(strategicTileGroup.children, false);
+
                 // Reset previous hover
-                if (hoveredTile) {
-                    resetTileColor(hoveredTile);
-                    hoveredTile = null;
+                if (hoveredStrategicTile) {
+                    // Reset strategic tile visual (make invisible again)
+                    hoveredStrategicTile.material.opacity = 0;
+                    const prevTileId = hoveredStrategicTile.userData.strategicTileId;
+                    hoveredStrategicTile = null;
                     // Hide debug info when not hovering
                     if (debugMode) {
                         hideDebugInfo();
                     }
                 }
-                
-                // Apply new hover - find the closest tile intersection
+
+                // Apply new hover - find the closest strategic tile intersection
                 if (intersects.length > 0) {
                     // Sort by distance and take the closest
                     intersects.sort((a, b) => a.distance - b.distance);
-                    
+
                     for (let i = 0; i < intersects.length; i++) {
-                        const tile = intersects[i].object;
-                        if (tile.userData && tile.userData.isTile && tile.userData.originalColor !== undefined) {
-                            hoveredTile = tile;
-                            // Apply highlight based on material type
-                            setTileHighlight(tile);
-                            
+                        const tileMesh = intersects[i].object;
+                        if (tileMesh.userData && tileMesh.userData.isStrategicTile) {
+                            hoveredStrategicTile = tileMesh;
+                            // Apply semi-transparent highlight to show selection
+                            tileMesh.material.opacity = 0.3;
+                            tileMesh.material.color.setHex(0xFFFF00); // Yellow highlight
+
+                            // Update grid lines to show around this tile
+                            updateStrategicGridLines(tileMesh.userData.strategicTileId);
+
                             // Show debug info if debug mode is enabled
-                            if (debugMode && tile.userData.debugData) {
-                                showDebugInfo(tile);
+                            if (debugMode && tileMesh.userData.strategicTileData) {
+                                showStrategicTileDebugInfo(tileMesh);
                             }
                             break;
                         }
                     }
+                }
+
+                // If no tile is hovered, hide grid lines
+                if (!hoveredStrategicTile) {
+                    updateStrategicGridLines(null);
                 }
             }
         }
@@ -4731,14 +5469,39 @@
             }
         }
         
-        // Helper function to show debug info for a tile
+        // Helper function to show debug info for a strategic tile
+        function showStrategicTileDebugInfo(tileMesh) {
+            const tileData = tileMesh.userData.strategicTileData;
+            const debugContent = document.getElementById('debug-content');
+            const debugOverlay = document.getElementById('debug-overlay');
+
+            if (!tileData || !debugContent || !debugOverlay) return;
+
+            // Format the debug information for strategic tiles
+            let info = `
+                <div style="color: #00FFFF;"><strong>STRATEGIC TILE</strong></div>
+                <div><strong>Biome:</strong> ${tileData.biomeType}</div>
+                <div><strong>Walkable:</strong> ${tileData.isWalkable ? 'Yes' : 'No'}</div>
+                <div><strong>Elevation:</strong> ${tileData.elevation.toFixed(3)}</div>
+                <div><strong>Temperature:</strong> ${tileData.temperature.toFixed(1)}°C</div>
+                <div><strong>Movement Cost:</strong> ${tileData.movementCost}</div>
+                <div><strong>Strategic Tile ID:</strong> ${tileData.id}</div>
+                <div><strong>Texture Parent ID:</strong> ${tileData.textureParentId}</div>
+                <div><strong>Neighbors:</strong> ${tileData.neighbors.length}</div>
+            `;
+
+            debugContent.innerHTML = info;
+            debugOverlay.style.display = 'block';
+        }
+
+        // Helper function to show debug info for a tile (legacy - for texture tiles)
         function showDebugInfo(tile) {
             const debugData = tile.userData.debugData;
             const debugContent = document.getElementById('debug-content');
             const debugOverlay = document.getElementById('debug-overlay');
-            
+
             if (!debugData || !debugContent || !debugOverlay) return;
-            
+
             // Format the debug information
             let info = `
                 <div><strong>Biome:</strong> ${debugData.biomeType}</div>
@@ -4756,7 +5519,7 @@
                 info += `<div style="color: #FFD700;"><strong>🚢 Shipping Port</strong></div>`;
                 info += `<div><strong>Landmass:</strong> ${tile.userData.portLandmass}</div>`;
             }
-            
+
             debugContent.innerHTML = info;
             debugOverlay.style.display = 'block';
         }
@@ -4772,34 +5535,35 @@
         // Right-click handler for context menu
         function onRightClick(event) {
             event.preventDefault(); // Prevent browser context menu
-            
+
             // Calculate mouse position in normalized device coordinates (-1 to +1)
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            
+
             // Update raycaster
             raycaster.setFromCamera(mouse, camera);
-            
-            // Calculate objects intersecting the ray
-            const intersects = raycaster.intersectObjects(scene.children, true);
-            
-            // Only process clicks on actual tiles, ignore other objects
-            for (let i = 0; i < intersects.length; i++) {
-                const intersect = intersects[i];
-                const object = intersect.object;
-                
-                // Check if we right-clicked on a tile (and only tiles)
-                if (object.userData && object.userData.isTile) {
-                    const tileData = object.userData.debugData;
 
-                    // Show context menu for walkable tiles or port tiles
-                    if (tileData.isWalkable || object.userData.hasPort) {
-                        showContextMenu(event, object);
-                        return; // Exit after processing the first tile found
+            // Raycast against strategic tiles
+            if (strategicTileGroup) {
+                const intersects = raycaster.intersectObjects(strategicTileGroup.children, false);
+
+                // Only process clicks on strategic tiles
+                if (intersects.length > 0) {
+                    const tileMesh = intersects[0].object;
+
+                    // Check if we right-clicked on a strategic tile
+                    if (tileMesh.userData && tileMesh.userData.isStrategicTile) {
+                        const tileData = tileMesh.userData.strategicTileData;
+
+                        // Show context menu for walkable tiles
+                        if (tileData.isWalkable) {
+                            showContextMenu(event, tileMesh);
+                            return;
+                        }
                     }
                 }
             }
-            
+
             // If we get here, no walkable tile was clicked - hide context menu
             hideContextMenu();
         }
@@ -4809,28 +5573,29 @@
             // Calculate mouse position in normalized device coordinates (-1 to +1)
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            
+
             // Update raycaster
             raycaster.setFromCamera(mouse, camera);
-            
-            // Calculate objects intersecting the ray
-            const intersects = raycaster.intersectObjects(scene.children, true);
-            
-            // Only process clicks on actual tiles, ignore other objects
-            for (let i = 0; i < intersects.length; i++) {
-                const intersect = intersects[i];
-                const object = intersect.object;
-                
-                // Check if we clicked on a tile (and only tiles)
-                if (object.userData && object.userData.isTile) {
-                    // If we're in placement mode, place structure
-                    if (placementState.active) {
-                        placeStructureOnTile(object);
-                        return;
+
+            // Raycast against strategic tiles
+            if (strategicTileGroup) {
+                const intersects = raycaster.intersectObjects(strategicTileGroup.children, false);
+
+                // Only process clicks on strategic tiles
+                if (intersects.length > 0) {
+                    const tileMesh = intersects[0].object;
+
+                    // Check if we clicked on a strategic tile
+                    if (tileMesh.userData && tileMesh.userData.isStrategicTile) {
+                        // If we're in placement mode, place structure
+                        if (placementState.active) {
+                            placeStructureOnTile(tileMesh);
+                            return;
+                        }
                     }
                 }
             }
-            
+
             // If we get here, no tile was clicked or not in placement mode - do nothing
         }
         
