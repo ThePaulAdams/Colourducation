@@ -299,6 +299,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="procedural_assets.js"></script>
+    <script src="procedural_audio.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
     
@@ -836,6 +837,7 @@
         document.getElementById('btn-research-forestry').addEventListener('click', () => {
             const cost = (gameState.research.forestry + 1) * 100;
             if (gameState.resources.gold >= cost) {
+                if (window.audioEngine) window.audioEngine.playBuild();
                 gameState.resources.gold -= cost;
                 gameState.research.forestry++;
                 notify(`Forestry upgraded to level ${gameState.research.forestry}!`, 'success');
@@ -849,6 +851,7 @@
         document.getElementById('btn-research-irrigation').addEventListener('click', () => {
             const cost = (gameState.research.irrigation + 1) * 100;
             if (gameState.resources.food >= cost) {
+                if (window.audioEngine) window.audioEngine.playBuild();
                 gameState.resources.food -= cost;
                 gameState.research.irrigation++;
                 notify(`Irrigation upgraded to level ${gameState.research.irrigation}!`, 'success');
@@ -862,6 +865,7 @@
         document.getElementById('btn-research-trade').addEventListener('click', () => {
             const cost = (gameState.research.trade + 1) * 100;
             if (gameState.resources.gold >= cost) {
+                if (window.audioEngine) window.audioEngine.playBuild();
                 gameState.resources.gold -= cost;
                 gameState.research.trade++;
                 notify(`Trade upgraded to level ${gameState.research.trade}!`, 'success');
@@ -1038,11 +1042,16 @@
         `;
         document.body.appendChild(contextMenu);
 
+        document.addEventListener('click', () => {
+            if (window.audioEngine) window.audioEngine.init();
+        }, { once: true });
+
         document.getElementById('btn-place-lumber').addEventListener('click', async () => {
              if (gameState.resources.gold < 50) {
                 alert("Not enough gold!");
                 return;
             }
+            if (window.audioEngine) window.audioEngine.playClick();
             await ensureLumberLoaded();
             enterPlacementMode('lumber');
         });
@@ -1052,6 +1061,7 @@
                 alert("Not enough wood!");
                 return;
             }
+            if (window.audioEngine) window.audioEngine.playClick();
             await ensureFarmLoaded();
             enterPlacementMode('farm');
         });
@@ -1061,6 +1071,7 @@
                 alert("Not enough wood!");
                 return;
             }
+            if (window.audioEngine) window.audioEngine.playClick();
             await ensureStallsLoaded();
             enterPlacementMode('stalls');
         });
@@ -1070,6 +1081,7 @@
                 alert("Not enough resources!");
                 return;
             }
+            if (window.audioEngine) window.audioEngine.playClick();
             await ensurePortLoaded();
             enterPlacementMode('port');
         });
@@ -1167,6 +1179,7 @@
             if (cost.wood) gameState.resources.wood -= cost.wood;
             if (cost.gold) gameState.resources.gold -= cost.gold;
             updateResourceDisplay();
+            if (window.audioEngine) window.audioEngine.playBuild();
 
             const d = tile.userData.debugData;
             const inst = proto.clone(true);
