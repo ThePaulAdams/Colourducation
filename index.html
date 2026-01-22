@@ -510,39 +510,76 @@
         varying vec3 v_world_position;
         varying vec3 v_local_position;
 
-        // Simple noise function
-        float simple_noise(vec2 uv) {
-            return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+        // Gradient noise
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+        float snoise(vec2 v) {
+            const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+                                0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+                                -0.577350269189626,  // -1.0 + 2.0 * C.x
+                                0.024390243902439); // 1.0 / 41.0
+            vec2 i  = floor(v + dot(v, C.yy) );
+            vec2 x0 = v -   i + dot(i, C.xx);
+            vec2 i1;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod289(i); // Avoid truncation effects in permutation
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+                + i.x + vec3(0.0, i1.x, 1.0 ));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m ;
+            m = m*m ;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+            vec3 g;
+            g.x  = a0.x  * x0.x  + h.x  * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
         }
 
         void main() {
-            // Use the biome color as the base
-            vec3 baseColor = u_biomeColor;
-
-            // Add subtle texture variation
-            float noise = simple_noise(vUv * 10.0);
-            baseColor = mix(baseColor * 0.8, baseColor * 1.2, noise);
-
-            // Simple elevation-based variation
-            float elevationFactor = clamp(u_elevation * 2.0, 0.0, 1.0);
-            vec3 highElevationColor = vec3(0.6, 0.5, 0.4); // Rocky color
-            baseColor = mix(baseColor, highElevationColor, elevationFactor * 0.3);
-
-            // Simple moisture-based variation
-            float moistureFactor = clamp(u_moisture, 0.0, 1.0);
-            vec3 wetColor = baseColor * 0.7; // Darker when wet
-            baseColor = mix(baseColor, wetColor, moistureFactor * 0.2);
-
-            // Simple lighting
-            vec3 lightDir = normalize(u_lightDirection);
             vec3 normal = normalize(v_normal);
-            float diffuse = max(dot(normal, lightDir), 0.0) * 0.7 + 0.3;
+            vec3 lightDir = normalize(u_lightDirection);
 
-            // Apply lighting
-            vec3 finalColor = baseColor * diffuse;
+            // 1. Base Color & Variation
+            vec3 baseColor = u_biomeColor;
+            
+            // Detail noise (high frequency) for grass/sand grain
+            float detail = snoise(v_world_position.xz * 20.0);
+            baseColor *= (0.9 + 0.2 * detail);
 
-            // Ensure minimum visibility
-            finalColor = max(finalColor, baseColor * 0.3);
+            // Large scale variation (low frequency)
+            float variation = snoise(v_world_position.xz * 2.0);
+            baseColor = mix(baseColor, baseColor * 0.8 + vec3(0.1, 0.1, 0.0), variation * 0.3);
+
+            // 2. Lighting (Lambertian + Half-Lambert for softness)
+            float NdotL = dot(normal, lightDir);
+            float diffuse = max(NdotL, 0.0);
+            float halfLambert = pow(diffuse * 0.5 + 0.5, 2.0); // Softer shadows
+
+            // 3. Slope-based texturing (Rock on steep slopes)
+            // Assuming "up" is normal to sphere surface (approx v_world_position normalized)
+            vec3 up = normalize(v_world_position);
+            float slope = 1.0 - dot(normal, up); // 0 = flat, 1 = vertical
+            
+            vec3 rockColor = vec3(0.4, 0.35, 0.3);
+            float rockFactor = smoothstep(0.1, 0.3, slope);
+            baseColor = mix(baseColor, rockColor, rockFactor);
+
+            // 4. Specular (very low for land, unless wet)
+            // Simple rim light for atmosphere feel
+            vec3 viewDir = normalize(cameraPosition - v_world_position);
+            float rim = 1.0 - max(dot(viewDir, normal), 0.0);
+            rim = smoothstep(0.6, 1.0, rim);
+            vec3 rimColor = vec3(0.1, 0.3, 0.5) * 0.5;
+
+            vec3 finalColor = baseColor * (halfLambert * 0.8 + 0.2) + rimColor * rim;
 
             gl_FragColor = vec4(finalColor, 1.0);
         }
@@ -594,12 +631,6 @@
         uniform vec3 u_lightDirection;
         uniform vec3 u_cameraPosition;
         uniform vec3 u_biomeColor;
-        uniform float u_big_waves_elevation;
-        uniform float u_big_waves_speed;
-        uniform float u_small_waves_elevation;
-        uniform float u_small_waves_speed;
-        uniform float u_color_offset;
-        uniform float u_color_multiplier;
         uniform float u_shininess;
         uniform vec3 u_foam_color;
         uniform float u_distanceToLand;
@@ -609,51 +640,73 @@
         varying float v_elevation;
         varying vec2 vUv;
 
-        // Simple noise function
-        float simple_noise(vec2 uv) {
-            return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+        // Voronoi/Cellular noise for caustic-like patterns
+        vec2 random2( vec2 p ) {
+            return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453);
+        }
+
+        float cellular(vec2 P) {
+            vec2 Pi = floor(P);
+            vec2 Pf = fract(P);
+            float min_dist = 1.0;
+            for(int y=-1; y<=1; y++) {
+                for(int x=-1; x<=1; x++) {
+                    vec2 neighbor = vec2(float(x),float(y));
+                    vec2 point = random2(Pi + neighbor);
+                    point = 0.5 + 0.5*sin(u_time*0.5 + 6.2831*point);
+                    vec2 diff = neighbor + point - Pf;
+                    float dist = length(diff);
+                    min_dist = min(min_dist, dist);
+                }
+            }
+            return min_dist;
         }
 
         void main() {
-            // Use depth and surface colors from sliders
-            vec3 deepWater = u_depth_color;
-            vec3 surfaceWater = u_surface_color;
-
-            // Very subtle, slow water variation - no aggressive flashing
-            float time = u_time * 0.1; // Much slower
-
-            // Use world position for consistent patterns across tiles
-            vec3 worldUV = v_world_position * 0.5;
-            float gentle_variation = simple_noise(worldUV.xy + time) * 0.05; // Very subtle
-
-            // Base water color with minimal variation
-            vec3 baseColor = mix(deepWater, surfaceWater, 0.5 + gentle_variation);
-
-            // Smooth lighting
-            vec3 lightDir = normalize(u_lightDirection);
-            vec3 normal = normalize(v_normal);
-            float diffuse = max(dot(normal, lightDir), 0.3) * 0.7 + 0.3;
-
-            // Controllable specular highlight
             vec3 viewDir = normalize(u_cameraPosition - v_world_position);
+            vec3 normal = normalize(v_normal);
+            vec3 lightDir = normalize(u_lightDirection);
+
+            // 1. Base Color Mixing based on Fresnel/Depth
+            // Fresnel term: Higher value at glancing angles
+            float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0);
+            
+            // Mix deep and surface colors based on fresnel and "fake depth" (can use distance to land as proxy)
+            float depthFactor = smoothstep(0.0, 0.5, u_distanceToLand);
+            vec3 waterColor = mix(u_surface_color, u_depth_color, depthFactor * 0.8);
+            
+            // Add Fresnel reflection (sky color proxy)
+            vec3 skyColor = vec3(0.6, 0.8, 1.0);
+            waterColor = mix(waterColor, skyColor, fresnel * 0.6);
+
+            // 2. Specular Highlights (Sun)
             vec3 halfDir = normalize(lightDir + viewDir);
-            float specular = pow(max(dot(normal, halfDir), 0.0), u_shininess) * 0.5;
+            float specAngle = max(dot(normal, halfDir), 0.0);
+            float specular = pow(specAngle, u_shininess);
+            // Add "glitter"
+            float noiseVal = cellular(v_world_position.xy * 8.0);
+            specular += pow(max(dot(normal, halfDir), 0.0), 20.0) * (1.0 - noiseVal) * 0.5;
 
-            // Apply lighting
-            vec3 finalColor = baseColor * diffuse + vec3(specular);
+            // 3. Foam / Caustics
+            // Voronoi pattern for caustics/foam
+            float c1 = cellular(v_world_position.xy * 5.0 + u_time * 0.2);
+            float c2 = cellular(v_world_position.xy * 10.0 - u_time * 0.3);
+            float pattern = (c1 + c2) * 0.5;
 
-            // Add very subtle, stable foam effect only for tiles very close to land
-            float foamDistance = clamp(u_distanceToLand, 0.0, 1.0);
-            if (foamDistance < 0.1) { // Only tiles immediately next to land
-                // Static foam pattern that doesn't flash
-                float foamPattern = simple_noise(v_world_position.xy * 10.0);
-                float edgeFoam = foamPattern * (1.0 - foamDistance * 10.0); // Fade with distance
+            // Shoreline foam
+            float shoreFoam = 1.0 - smoothstep(0.0, 0.15, u_distanceToLand);
+            shoreFoam *= smoothstep(0.4, 0.6, pattern); // Break up foam
+            
+            // Wave crest foam
+            float crestFoam = smoothstep(0.08, 0.12, v_elevation); // Foam at wave peaks
 
-                // Very minimal foam (3% max)
-                finalColor = mix(finalColor, u_foam_color, edgeFoam * 0.03);
-            }
+            vec3 finalFoam = u_foam_color * (shoreFoam + crestFoam * 0.5);
 
-            gl_FragColor = vec4(finalColor, 1.0);
+            // 4. Combine
+            vec3 finalColor = waterColor + vec3(specular);
+            finalColor = mix(finalColor, u_foam_color, clamp(shoreFoam + crestFoam * 0.3, 0.0, 0.8));
+
+            gl_FragColor = vec4(finalColor, 0.95); // Slightly transparent
         }
     </script>
     
@@ -3960,10 +4013,19 @@
                     }
                     // Don't call positionCharacter() for intermediate tiles during movement
                 } else {
-                    // Move towards next tile using accumulated segmentT
-                    const newPos = currentPos.clone().lerp(nextPos, this.segmentT);
+                    // Spherical Movement Logic
+                    // 1. Linear interpolation (cuts through sphere)
+                    const tempPos = currentPos.clone().lerp(nextPos, this.segmentT);
+                    
+                    // 2. Project back to surface radius
+                    // Interpolate the radius between start and end to handle elevation changes smoothly
+                    const startRadius = currentPos.length();
+                    const endRadius = nextPos.length();
+                    const currentRadius = startRadius + (endRadius - startRadius) * this.segmentT;
+                    
+                    const newPos = tempPos.normalize().multiplyScalar(currentRadius);
 
-                    // Position at interpolated position - IDENTICAL for both character and sailboat
+                    // Position at corrected position
                     this.mesh.position.copy(newPos);
                     
                     // Swaying animation
@@ -3974,21 +4036,21 @@
 
                     // Add height offset - sailboat above surface level
                     const heightOffset = this.isShipTravel ? 0.25 : 0.2;
-                    const tileNormal = isStrategicTile ? nextTile.normal : nextTile.userData.debugData.tileNormal;
+                    const tileNormal = newPos.clone().normalize(); // Use actual surface normal at this point
                     this.mesh.position.add(
                         tileNormal.clone().multiplyScalar(heightOffset)
                     );
 
                     // Handle rotation AFTER positioning is complete
+                    // Calculate forward direction based on great circle path
                     const direction = nextPos.clone().sub(currentPos).normalize();
-                    const currentNormal = isStrategicTile ? currentTile.normal : currentTile.userData.debugData.tileNormal;
-                    
-                    if (direction.length() > 0.1) {
-                        const up = currentNormal;
-                        const right = direction.clone().cross(up).normalize();
-                        const forward = up.clone().cross(right).normalize();
+                    // Project direction onto tangent plane at newPos
+                    const up = tileNormal;
+                    const right = direction.cross(up).normalize();
+                    const forward = up.clone().cross(right).normalize();
                         
-                        const m = new THREE.Matrix4();
+                    if (direction.length() > 0.001) {
+                         const m = new THREE.Matrix4();
                         m.makeBasis(right, up, forward.negate());
                         const q = new THREE.Quaternion().setFromRotationMatrix(m);
                         this.mesh.setRotationFromQuaternion(q);
