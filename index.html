@@ -3965,6 +3965,12 @@
 
                     // Position at interpolated position - IDENTICAL for both character and sailboat
                     this.mesh.position.copy(newPos);
+                    
+                    // Swaying animation
+                    const swayAmount = 0.05;
+                    const swaySpeed = 10.0;
+                    const sway = Math.sin(performance.now() * 0.001 * swaySpeed) * swayAmount;
+                    this.mesh.rotation.z = sway;
 
                     // Add height offset - sailboat above surface level
                     const heightOffset = this.isShipTravel ? 0.25 : 0.2;
@@ -3973,17 +3979,23 @@
                         tileNormal.clone().multiplyScalar(heightOffset)
                     );
 
-                    // Handle rotation AFTER positioning is complete (doesn't affect path following)
-                    if (this.isShipTravel) {
-                        // Make sailboat face direction of travel - this is purely cosmetic
-                        const direction = nextPos.clone().sub(currentPos).normalize();
-                        if (direction.length() > 0.1) {
-                            this.mesh.lookAt(this.mesh.position.clone().add(direction));
-                        }
-                    } else {
-                        // Keep character upright
-                        this.mesh.rotation.set(0, 0, 0);
+                    // Handle rotation AFTER positioning is complete
+                    const direction = nextPos.clone().sub(currentPos).normalize();
+                    const currentNormal = isStrategicTile ? currentTile.normal : currentTile.userData.debugData.tileNormal;
+                    
+                    if (direction.length() > 0.1) {
+                        const up = currentNormal;
+                        const right = direction.clone().cross(up).normalize();
+                        const forward = up.clone().cross(right).normalize();
+                        
+                        const m = new THREE.Matrix4();
+                        m.makeBasis(right, up, forward.negate());
+                        const q = new THREE.Quaternion().setFromRotationMatrix(m);
+                        this.mesh.setRotationFromQuaternion(q);
                     }
+
+                    // Apply swaying on top of rotation
+                    this.mesh.rotateZ(sway);
                 }
             }
             
