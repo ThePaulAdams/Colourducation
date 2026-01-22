@@ -1154,14 +1154,32 @@
 
         async function ensureLumberLoaded() {
             if (lumberPrototype) return;
-            lumberPrototype = createProceduralLumberCamp();
-            console.log('Generated procedural lumber camp');
+            try {
+                lumberPrototype = createProceduralLumberCamp();
+                if (!lumberPrototype) throw new Error("Returned null");
+                console.log('Generated procedural lumber camp');
+            } catch (e) {
+                console.error("Failed to generate lumber camp:", e);
+                // Fallback: Red Box
+                lumberPrototype = new THREE.Group();
+                const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({color: 0xff0000}));
+                lumberPrototype.add(box);
+            }
         }
 
         async function ensureFarmLoaded() {
             if (farmPrototype) return;
-            farmPrototype = createProceduralFarm();
-            console.log('Generated procedural farm');
+            try {
+                farmPrototype = createProceduralFarm();
+                if (!farmPrototype) throw new Error("Returned null");
+                console.log('Generated procedural farm');
+            } catch (e) {
+                console.error("Failed to generate farm:", e);
+                // Fallback: Green Box
+                farmPrototype = new THREE.Group();
+                const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({color: 0x00ff00}));
+                farmPrototype.add(box);
+            }
         }
 
         function enterPlacementMode(type) {
@@ -6006,7 +6024,10 @@
         
         function gameTick() {
             gameTime++;
-            // console.log("Tick - Structures:", structuresGroup.children.length); // Debug
+            // Debug active structures occasionally
+            if (gameTime % 10 === 0) {
+                // console.log(`Tick ${gameTime}: ${structuresGroup.children.length} structures active.`);
+            }
             
             // Income
             let goldIncome = 0;
