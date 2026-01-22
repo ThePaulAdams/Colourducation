@@ -1072,43 +1072,43 @@
             if (window.audioEngine) window.audioEngine.init();
         }, { once: true });
 
-        document.getElementById('btn-place-lumber').addEventListener('click', async () => {
+        document.getElementById('btn-place-lumber').addEventListener('click', () => {
              if (gameState.resources.gold < 50) {
                 alert("Not enough gold!");
                 return;
             }
             if (window.audioEngine) window.audioEngine.playClick();
-            await ensureLumberLoaded();
+            ensureLumberLoaded();
             enterPlacementMode('lumber');
         });
 
-        document.getElementById('btn-place-farm').addEventListener('click', async () => {
+        document.getElementById('btn-place-farm').addEventListener('click', () => {
              if (gameState.resources.wood < 50) {
                 alert("Not enough wood!");
                 return;
             }
             if (window.audioEngine) window.audioEngine.playClick();
-            await ensureFarmLoaded();
+            ensureFarmLoaded();
             enterPlacementMode('farm');
         });
 
-        document.getElementById('btn-place-stalls').addEventListener('click', async () => {
+        document.getElementById('btn-place-stalls').addEventListener('click', () => {
             if (gameState.resources.wood < 50) {
                 alert("Not enough wood!");
                 return;
             }
             if (window.audioEngine) window.audioEngine.playClick();
-            await ensureStallsLoaded();
+            ensureStallsLoaded();
             enterPlacementMode('stalls');
         });
 
-        document.getElementById('btn-place-port').addEventListener('click', async () => {
+        document.getElementById('btn-place-port').addEventListener('click', () => {
              if (gameState.resources.wood < 100 || gameState.resources.gold < 50) {
                 alert("Not enough resources!");
                 return;
             }
             if (window.audioEngine) window.audioEngine.playClick();
-            await ensurePortLoaded();
+            ensurePortLoaded();
             enterPlacementMode('port');
         });
 
@@ -1119,13 +1119,13 @@
             }
         });
 
-        async function ensureStallsLoaded() {
+        function ensureStallsLoaded() {
             if (stallsPrototype) return;
             stallsPrototype = createProceduralStalls();
             console.log('Generated procedural stalls');
         }
 
-        async function ensureLumberLoaded() {
+        function ensureLumberLoaded() {
             if (lumberPrototype) return;
             try {
                 lumberPrototype = createProceduralLumberCamp();
@@ -1140,7 +1140,7 @@
             }
         }
 
-        async function ensureFarmLoaded() {
+        function ensureFarmLoaded() {
             if (farmPrototype) return;
             try {
                 farmPrototype = createProceduralFarm();
@@ -1256,19 +1256,19 @@
         let sailboatPrototype = null;
         let fishingboatPrototype = null;
 
-        async function ensureSailboatLoaded() {
+        function ensureSailboatLoaded() {
             if (sailboatPrototype) return;
             sailboatPrototype = createProceduralSailboat();
             console.log('Generated procedural sailboat');
         }
 
-        async function ensureFishingboatLoaded() {
+        function ensureFishingboatLoaded() {
             if (fishingboatPrototype) return;
             fishingboatPrototype = createProceduralFishingBoat();
             console.log('Generated procedural fishing boat');
         }
 
-        async function ensurePortLoaded() {
+        function ensurePortLoaded() {
             if (portPrototype) return;
             portPrototype = createProceduralPort();
             console.log('Generated procedural port');
@@ -1449,10 +1449,10 @@
             return portSites;
         }
 
-        async function placeShippingPorts() {
+        function placeShippingPorts() {
             console.log('Placing shipping ports...');
 
-            await ensurePortLoaded();
+            ensurePortLoaded();
 
             // Clear existing ports
             portsGroup.clear();
@@ -1723,7 +1723,7 @@
             contextMenuTargetTile = null;
         }
 
-        async function travelToPortTile(targetTileId, targetLandmass) {
+        function travelToPortTile(targetTileId, targetLandmass) {
             if (!playerCharacter || !pathfinder) {
                 console.log('Cannot travel: no character or pathfinder');
                 return;
@@ -1738,10 +1738,10 @@
             console.log(`🚢 Sailing to tile ${targetTileId} on landmass ${targetLandmass}`);
 
             // Use standard movement with port-to-port water walkability
-            await playerCharacter.moveToTile(targetTileId, pathfinder);
+            playerCharacter.moveToTile(targetTileId, pathfinder);
         }
 
-        async function travelToPort(targetLandmassId) {
+        function travelToPort(targetLandmassId) {
             if (!playerCharacter || !pathfinder) {
                 console.log('Cannot travel: no character or pathfinder');
                 return;
@@ -1771,10 +1771,10 @@
             console.log(`🚢 Sailing to landmass ${targetLandmassId}, strategic tile ${targetStrategicTileId}`);
 
             // Use standard movement with port-to-port water walkability
-            await playerCharacter.moveToTile(targetStrategicTileId, pathfinder);
+            playerCharacter.moveToTile(targetStrategicTileId, pathfinder);
         }
 
-        async function moveCharacterToTile(tileMesh) {
+        function moveCharacterToTile(tileMesh) {
             if (!playerCharacter || !pathfinder || !tileMesh) return;
 
             // Get strategic tile ID from the mesh
@@ -1782,7 +1782,7 @@
             const tileData = tileMesh.userData.strategicTileData;
 
             console.log(`Moving character to strategic tile ${strategicTileId} (${tileData.biomeType})`);
-            await playerCharacter.moveToTile(strategicTileId, pathfinder);
+            playerCharacter.moveToTile(strategicTileId, pathfinder);
         }
 
         // Scene setup
@@ -2582,8 +2582,8 @@
         }
 
         // Boat creation functions
-        async function createBoat(boatColor = 0x8B4513) {
-            await ensureFishingboatLoaded();
+        function createBoat(boatColor = 0x8B4513) {
+            ensureFishingboatLoaded();
 
             if (!fishingboatPrototype) {
                 console.warn('Failed to create fishing boat, fishingboatPrototype is null');
@@ -2633,7 +2633,7 @@
             return waterTiles;
         }
 
-        async function generateBoats() {
+        function generateBoats() {
             clearBoats();
 
             const waterTiles = findWaterTiles();
@@ -2653,7 +2653,7 @@
 
                 // Create boat
                 const boatColor = boatColors[i % boatColors.length];
-                const boat = await createBoat(boatColor);
+                const boat = createBoat(boatColor);
 
                 if (!boat) {
                     console.warn(`Failed to create boat ${i}`);
@@ -3787,10 +3787,10 @@
                 if (typeof emitPlayerMove === 'function') emitPlayerMove(this.currentTileId, this.isShipTravel);
             }
 
-            async switchToSailboat() {
+            switchToSailboat() {
                 if (this.isShipTravel) return; // Already in ship mode
 
-                await ensureSailboatLoaded();
+                ensureSailboatLoaded();
 
                 // Store original mesh if not already stored
                 if (!this.originalMesh) {
@@ -3850,7 +3850,7 @@
                 }
             }
             
-            async moveToTile(targetTileId, pathfinder) {
+            moveToTile(targetTileId, pathfinder) {
                 // Don't move if already at target
                 if (this.currentTileId === targetTileId) {
                     console.log(`Character already at tile ${targetTileId}`);
@@ -3883,7 +3883,7 @@
                     console.log(`Port-to-port travel from ${this.currentTileId} to ${targetTileId}, enabling water-only walkability`);
 
                     // Switch to sailboat for ship travel
-                    await this.switchToSailboat();
+                    this.switchToSailboat();
 
                     // Temporarily modify walkability for water-only ship travel
                     const originalWalkability = new Map();
@@ -4443,12 +4443,6 @@
         // Global Noise Texture
         const noiseTexture = textureGen.generateNoiseTexture(512, 512);
 
-        // Build the planet
-        function buildPlanet() {
-            // ... existing buildPlanet logic ...
-            // When creating materials, pass noiseTexture
-        }
-
         // Helper to update material uniforms
         function updateMaterialUniforms(material) {
             if (!material.uniforms) return;
@@ -4456,6 +4450,9 @@
                 material.uniforms.u_noiseTexture.value = noiseTexture;
             }
         }
+
+        // Build the planet
+        function buildPlanet() {
             console.log('buildPlanet()', { textureDetail: settings.textureDetail, strategicDetail: settings.strategicDetail, settings: { ...settings } });
             // reseed simplex with current seed to ensure determinism across rebuilds
             simplex = new SimplexNoise(settings.seed.toString());
@@ -5016,7 +5013,7 @@
             loadCastle();
             
             // Generate boats on water tiles
-            await generateBoats();
+            generateBoats();
 
             // Apply tiny scale immediately after boats are generated
             applyTinyBoatScale();
@@ -5099,14 +5096,14 @@
         const cloudOpacityValue = document.getElementById('cloudOpacityValue');
         const regenBtn = document.getElementById('regen');
 
-        async function setTextureDetail(val) {
+        function setTextureDetail(val) {
             settings.textureDetail = parseInt(val, 10);
             textureDetailValue.textContent = settings.textureDetail;
             console.log('texture detail changed ->', settings.textureDetail);
-            await updateAndRebuild('textureDetail');
+            updateAndRebuild('textureDetail');
         }
 
-        async function setStrategicDetail(val) {
+        function setStrategicDetail(val) {
             settings.strategicDetail = parseInt(val, 10);
             strategicDetailValue.textContent = settings.strategicDetail;
 
@@ -5122,20 +5119,20 @@
             }
 
             console.log('strategic detail changed ->', settings.strategicDetail);
-            await updateAndRebuild('strategicDetail');
+            updateAndRebuild('strategicDetail');
         }
 
-        async function setStrategicGridOffset(val) {
+        function setStrategicGridOffset(val) {
             settings.strategicGridOffset = parseFloat(val);
             strategicGridOffsetValue.textContent = settings.strategicGridOffset.toFixed(2);
             console.log('strategic grid offset changed ->', settings.strategicGridOffset);
-            await updateAndRebuild('strategicGridOffset');
+            updateAndRebuild('strategicGridOffset');
         }
 
-        async function updateAndRebuild(reason) {
+        function updateAndRebuild(reason) {
             if (reason) console.log('rebuild reason:', reason);
             setSeedLabel();
-            await buildPlanet();
+            buildPlanet();
         }
 
         textureDetailSlider.addEventListener('input', e => setTextureDetail(e.target.value));
