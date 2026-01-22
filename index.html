@@ -254,7 +254,8 @@
 
     <!-- Three.js and controls (non-module for easy file:// usage) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="procedural_assets.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
     
@@ -726,6 +727,129 @@
     </script>
 
     <script>
+        // --- Game State & Resources ---
+        const gameState = {
+            resources: {
+                gold: 100,
+                wood: 100,
+                food: 100
+            }
+        };
+
+        // --- Multiplayer ---
+        const socket = io();
+        const otherPlayers = {}; // id -> { mesh, targetTileId, ... }
+
+        socket.on('currentPlayers', (players) => {
+            Object.keys(players).forEach((id) => {
+                if (id === socket.id) return;
+                addOtherPlayer(players[id]);
+            });
+        });
+
+        socket.on('newPlayer', (player) => {
+            addOtherPlayer(player);
+        });
+
+        socket.on('playerMoved', (data) => {
+            updateOtherPlayer(data);
+        });
+
+        socket.on('playerDisconnected', (id) => {
+            removeOtherPlayer(id);
+        });
+
+        function addOtherPlayer(playerData) {
+            if (otherPlayers[playerData.id]) return;
+            
+            const mesh = createProceduralAdventurer();
+            mesh.visible = false;
+            scene.add(mesh);
+            
+            otherPlayers[playerData.id] = {
+                mesh: mesh,
+                tileId: playerData.tileId,
+                isShip: playerData.isShip
+            };
+            
+            if (playerData.tileId !== null) {
+                positionOtherPlayer(otherPlayers[playerData.id], playerData.tileId);
+            }
+        }
+        
+        function removeOtherPlayer(id) {
+            if (otherPlayers[id]) {
+                scene.remove(otherPlayers[id].mesh);
+                delete otherPlayers[id];
+            }
+        }
+        
+        function updateOtherPlayer(data) {
+            const player = otherPlayers[data.id];
+            if (!player) return;
+            
+            player.tileId = data.tileId;
+            player.isShip = data.isShip;
+            positionOtherPlayer(player, data.tileId);
+        }
+        
+        function positionOtherPlayer(player, tileId) {
+            // Check texture map first, then strategic
+            // Incoming ID could be either? Usually strategic ID for movement
+            let tile = strategicTileMap.get(tileId);
+            if (!tile) tile = textureTileMap.get(tileId);
+            
+            if (!tile) return;
+            
+            const isStrategic = !tile.userData;
+            const pos = isStrategic ? tile.position : tile.userData.debugData.tileCenter;
+            const norm = isStrategic ? tile.normal : tile.userData.debugData.tileNormal;
+            
+            player.mesh.position.copy(pos).add(norm.clone().multiplyScalar(0.2));
+            player.mesh.visible = true;
+            
+            const up = new THREE.Vector3(0, 1, 0);
+            const q = new THREE.Quaternion().setFromUnitVectors(up, norm);
+            player.mesh.setRotationFromQuaternion(q);
+        }
+        
+        function emitPlayerMove(tileId, isShip) {
+            socket.emit('playerMove', { tileId, isShip });
+        }
+
+        function updateResourceDisplay() {
+            const elGold = document.getElementById('res-gold');
+            const elWood = document.getElementById('res-wood');
+            const elFood = document.getElementById('res-food');
+            if (elGold) elGold.textContent = Math.floor(gameState.resources.gold);
+            if (elWood) elWood.textContent = Math.floor(gameState.resources.wood);
+            if (elFood) elFood.textContent = Math.floor(gameState.resources.food);
+        }
+
+        // --- Resource UI ---
+        const resourcePanel = document.createElement('div');
+        resourcePanel.style.position = 'fixed';
+        resourcePanel.style.top = '16px';
+        resourcePanel.style.left = '50%';
+        resourcePanel.style.transform = 'translateX(-50%)';
+        resourcePanel.style.background = 'rgba(0,0,0,0.6)';
+        resourcePanel.style.backdropFilter = 'blur(4px)';
+        resourcePanel.style.padding = '8px 16px';
+        resourcePanel.style.borderRadius = '20px';
+        resourcePanel.style.color = '#fff';
+        resourcePanel.style.display = 'flex';
+        resourcePanel.style.gap = '20px';
+        resourcePanel.style.fontFamily = 'Inter, sans-serif';
+        resourcePanel.style.fontWeight = 'bold';
+        resourcePanel.style.zIndex = '1000';
+        resourcePanel.innerHTML = `
+            <div>💰 <span id="res-gold">100</span></div>
+            <div>🌲 <span id="res-wood">100</span></div>
+            <div>🍎 <span id="res-food">100</span></div>
+            <div>📅 <span id="game-season">Year 1</span></div>
+        `;
+        document.body.appendChild(resourcePanel);
+
         // --- Store UI ---
         const storePanel = document.createElement('div');
         storePanel.id = 'store-panel';
@@ -740,15 +864,43 @@
         storePanel.style.fontFamily = 'sans-serif';
         storePanel.style.zIndex = '1000';
         storePanel.innerHTML = `
-            <div style="font-weight:700;margin-bottom:8px;">Store (Mock)</div>
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                <div style="width:48px;height:48px;background:#222;border:1px solid #555;display:flex;align-items:center;justify-content:center;border-radius:4px;">Stalls</div>
-                <button id="btn-place-stalls" style="flex:1;padding:6px 8px;cursor:pointer;">Place Stalls</button>
-                <button id="btn-browse-stalls" title="Load local GLB" style="padding:6px 8px;cursor:pointer;">Browse…</button>
+            <div style="font-weight:700;margin-bottom:12px;text-align:center;border-bottom:1px solid #555;padding-bottom:8px;">Construction</div>
+            
+            <div class="store-item" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span>Lumber Camp</span>
+                    <span style="font-size:11px;color:#aaa;">50💰</span>
+                </div>
+                <button id="btn-place-lumber" style="width:100%;padding:6px;cursor:pointer;background:#444;border:1px solid #666;color:#fff;border-radius:4px;">Build (+5🌲/t)</button>
             </div>
-            <div style="font-size:12px;color:#ccc;line-height:1.3;">
-                - Click "Place Stalls", hover a tile to preview, click tile to place.<br/>
-                - Press Esc to cancel.
+
+            <div class="store-item" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span>Farm</span>
+                    <span style="font-size:11px;color:#aaa;">50🌲</span>
+                </div>
+                <button id="btn-place-farm" style="width:100%;padding:6px;cursor:pointer;background:#444;border:1px solid #666;color:#fff;border-radius:4px;">Build (+5🍎/t)</button>
+            </div>
+
+            <div class="store-item" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span>Market Stalls</span>
+                    <span style="font-size:11px;color:#aaa;">50🌲</span>
+                </div>
+                <button id="btn-place-stalls" style="width:100%;padding:6px;cursor:pointer;background:#444;border:1px solid #666;color:#fff;border-radius:4px;">Build (+2💰/t)</button>
+            </div>
+
+            <div class="store-item" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span>Port</span>
+                    <span style="font-size:11px;color:#aaa;">100🌲 50💰</span>
+                </div>
+                <button id="btn-place-port" style="width:100%;padding:6px;cursor:pointer;background:#444;border:1px solid #666;color:#fff;border-radius:4px;">Build (+5💰/t)</button>
+            </div>
+
+            <div style="font-size:11px;color:#888;margin-top:8px;text-align:center;">
+                Click to select, then click tile to place.
+                <br/>ESC to cancel.
             </div>
             <div id="store-panel-error" style="margin-top:8px;color:#ff8888;font-size:12px;"></div>
         `;
@@ -773,37 +925,40 @@
         `;
         document.body.appendChild(contextMenu);
 
-        const hiddenFile = document.createElement('input');
-        hiddenFile.type = 'file';
-        hiddenFile.accept = '.glb,.gltf,model/gltf-binary,model/gltf+json';
-        hiddenFile.style.display = 'none';
-        document.body.appendChild(hiddenFile);
+        document.getElementById('btn-place-lumber').addEventListener('click', async () => {
+             if (gameState.resources.gold < 50) {
+                alert("Not enough gold!");
+                return;
+            }
+            await ensureLumberLoaded();
+            enterPlacementMode('lumber');
+        });
+
+        document.getElementById('btn-place-farm').addEventListener('click', async () => {
+             if (gameState.resources.wood < 50) {
+                alert("Not enough wood!");
+                return;
+            }
+            await ensureFarmLoaded();
+            enterPlacementMode('farm');
+        });
 
         document.getElementById('btn-place-stalls').addEventListener('click', async () => {
+            if (gameState.resources.wood < 50) {
+                alert("Not enough wood!");
+                return;
+            }
             await ensureStallsLoaded();
             enterPlacementMode('stalls');
         });
-        document.getElementById('btn-browse-stalls').addEventListener('click', () => hiddenFile.click());
-        hiddenFile.addEventListener('change', async (e) => {
-            const file = e.target.files && e.target.files[0];
-            if (!file) return;
-            const url = URL.createObjectURL(file);
-            try {
-                const loader = new THREE.GLTFLoader();
-                loader.load(url, (gltf) => {
-                    stallsPrototype = gltf.scene;
-                    stallsPrototype.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; if (!(n.material instanceof THREE.MeshPhongMaterial)) { n.material = new THREE.MeshPhongMaterial({ color: 0xffffff }); }}});
-                    const msg = document.getElementById('store-panel-error');
-                    if (msg) msg.textContent = '';
-                    createPlacementGhost();
-                }, undefined, (err) => {
-                    console.error('Failed to load local GLB', err);
-                    const msg = document.getElementById('store-panel-error');
-                    if (msg) msg.textContent = 'Failed to load selected GLB.';
-                });
-            } finally {
-                URL.revokeObjectURL(url);
+
+        document.getElementById('btn-place-port').addEventListener('click', async () => {
+             if (gameState.resources.wood < 100 || gameState.resources.gold < 50) {
+                alert("Not enough resources!");
+                return;
             }
+            await ensurePortLoaded();
+            enterPlacementMode('port');
         });
 
         window.addEventListener('keydown', (e) => {
@@ -815,61 +970,20 @@
 
         async function ensureStallsLoaded() {
             if (stallsPrototype) return;
-            const loader = new THREE.GLTFLoader();
+            stallsPrototype = createProceduralStalls();
+            console.log('Generated procedural stalls');
+        }
 
-            // Build candidate list from settings to make path obvious and editable
-            const baseHref = window.location.href.replace(/[#?].*$/, '');
-            const pageDir = baseHref.replace(/[^\/]*$/, ''); // strip filename
-            const primary = settings.stallsModelPath || 'Models/market-stalls.glb';
-            const candidates = [
-                primary,
-                './' + primary,
-                pageDir + primary,
-                '/' + primary.replace(/^\/*/, '')
-            ];
+        async function ensureLumberLoaded() {
+            if (lumberPrototype) return;
+            lumberPrototype = createProceduralLumberCamp();
+            console.log('Generated procedural lumber camp');
+        }
 
-            console.log('Stalls loader candidates:', candidates);
-            for (let i = 0; i < candidates.length; i++) {
-                const url = candidates[i];
-                // Try loading directly; on error, try next
-                // eslint-disable-next-line no-await-in-loop
-                await new Promise((resolve) => {
-                    loader.load(url, (gltf) => {
-                        stallsPrototype = gltf.scene;
-                        stallsPrototype.traverse(n => {
-                            if (n.isMesh) {
-                                n.castShadow = true; n.receiveShadow = true;
-                                // Ensure sRGB on color textures for r128
-                                if (n.material && n.material.map && THREE.sRGBEncoding) {
-                                    n.material.map.encoding = THREE.sRGBEncoding;
-                                    n.material.needsUpdate = true;
-                                }
-                                if (n.material && n.material.emissiveMap && THREE.sRGBEncoding) {
-                                    n.material.emissiveMap.encoding = THREE.sRGBEncoding;
-                                    n.material.needsUpdate = true;
-                                }
-                            }
-                        });
-                        console.log('Loaded stalls model from', url);
-                        resolve();
-                    }, undefined, (err) => {
-                        console.warn('Failed stalls candidate:', url, err);
-                        resolve(); // try next
-                    });
-                });
-                if (stallsPrototype) break;
-            }
-
-            if (!stallsPrototype) {
-                console.error('All stalls paths failed, using fallback cube');
-                const msg = document.getElementById('store-panel-error');
-                if (msg) {
-                    msg.textContent = 'Could not load stalls model; using fallback cube.';
-                }
-                const g = new THREE.BoxGeometry(0.3,0.3,0.3);
-                const m = new THREE.MeshPhongMaterial({ color: 0xffaa00 });
-                stallsPrototype = new THREE.Mesh(g,m);
-            }
+        async function ensureFarmLoaded() {
+            if (farmPrototype) return;
+            farmPrototype = createProceduralFarm();
+            console.log('Generated procedural farm');
         }
 
         function enterPlacementMode(type) {
@@ -888,6 +1002,10 @@
             if (placementGhost) { scene.remove(placementGhost); placementGhost = null; }
             let proto = null;
             if (placementState.type === 'stalls') proto = stallsPrototype;
+            else if (placementState.type === 'port') proto = portPrototype;
+            else if (placementState.type === 'lumber') proto = lumberPrototype;
+            else if (placementState.type === 'farm') proto = farmPrototype;
+
             if (!proto) return;
             placementGhost = proto.clone(true);
             placementGhost.traverse(n => { if (n.material) { n.material = n.material.clone(); n.material.transparent = true; n.material.opacity = 0.6; } });
@@ -904,14 +1022,39 @@
             const up = new THREE.Vector3(0,1,0);
             const q = new THREE.Quaternion().setFromUnitVectors(up, n);
             placementGhost.setRotationFromQuaternion(q);
-            placementGhost.scale.set(0.3,0.3,0.3);
         }
 
         function placeStructureOnTile(tile) {
             if (!placementState.active) return;
+            
             let proto = null;
-            if (placementState.type === 'stalls') proto = stallsPrototype;
+            let cost = {};
+
+            if (placementState.type === 'stalls') {
+                proto = stallsPrototype;
+                cost = { wood: 50 };
+            } else if (placementState.type === 'port') {
+                proto = portPrototype;
+                cost = { wood: 100, gold: 50 };
+            } else if (placementState.type === 'lumber') {
+                proto = lumberPrototype;
+                cost = { gold: 50 };
+            } else if (placementState.type === 'farm') {
+                proto = farmPrototype;
+                cost = { wood: 50 };
+            }
+
             if (!proto || !tile) return;
+
+            // Check resources again
+            if (cost.wood && gameState.resources.wood < cost.wood) return;
+            if (cost.gold && gameState.resources.gold < cost.gold) return;
+
+            // Deduct
+            if (cost.wood) gameState.resources.wood -= cost.wood;
+            if (cost.gold) gameState.resources.gold -= cost.gold;
+            updateResourceDisplay();
+
             const d = tile.userData.debugData;
             const inst = proto.clone(true);
             const pos = d.tileCenter.clone();
@@ -920,7 +1063,13 @@
             const up = new THREE.Vector3(0,1,0);
             const q = new THREE.Quaternion().setFromUnitVectors(up, n);
             inst.setRotationFromQuaternion(q);
-            inst.scale.set(0.3,0.3,0.3);
+            
+            // Respect prototype scale
+            inst.scale.copy(proto.scale);
+            
+            // Tag structure for game logic
+            inst.userData.structureType = placementState.type;
+
             structuresGroup.add(inst);
             exitPlacementMode();
         }
@@ -931,146 +1080,20 @@
 
         async function ensureSailboatLoaded() {
             if (sailboatPrototype) return;
-            const loader = new THREE.GLTFLoader();
-
-            const baseHref = window.location.href.replace(/[#?].*$/, '');
-            const pageDir = baseHref.replace(/[^\/]*$/, '');
-            const primary = 'Models/sailboat/sailboat.glb';
-            const candidates = [
-                primary,
-                './' + primary,
-                pageDir + primary,
-                '/' + primary.replace(/^\/*/, '')
-            ];
-
-            console.log('Sailboat loader candidates:', candidates);
-            for (let i = 0; i < candidates.length; i++) {
-                const url = candidates[i];
-                await new Promise((resolve) => {
-                    loader.load(url, (gltf) => {
-                        sailboatPrototype = gltf.scene;
-                        sailboatPrototype.traverse(n => {
-                            if (n.isMesh) {
-                                n.castShadow = true;
-                                n.receiveShadow = true;
-                            }
-                        });
-                        console.log(`Sailboat loaded successfully from: ${url}`);
-                        resolve();
-                    }, (progress) => {
-                        // Loading progress - no action needed
-                    }, (error) => {
-                        console.warn(`Sailboat load failed for ${url}:`, error);
-                        resolve();
-                    });
-                });
-                if (sailboatPrototype) break;
-            }
-
-            if (!sailboatPrototype) {
-                console.warn('Failed to load sailboat GLB, using fallback cube');
-                const cubeGeometry = new THREE.BoxGeometry(0.3, 0.1, 0.5);
-                const cubeMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-                sailboatPrototype = new THREE.Mesh(cubeGeometry, cubeMaterial);
-            }
+            sailboatPrototype = createProceduralSailboat();
+            console.log('Generated procedural sailboat');
         }
 
         async function ensureFishingboatLoaded() {
             if (fishingboatPrototype) return;
-            const loader = new THREE.GLTFLoader();
-
-            const baseHref = window.location.href.replace(/[#?].*$/, '');
-            const pageDir = baseHref.replace(/[^\/]*$/, '');
-            const primary = 'Models/fishingboat/fishingboat.glb';
-            const candidates = [
-                primary,
-                './' + primary,
-                pageDir + primary,
-                '/' + primary.replace(/^\/*/, '')
-            ];
-
-            console.log('Fishing boat loader candidates:', candidates);
-            for (let i = 0; i < candidates.length; i++) {
-                const url = candidates[i];
-                await new Promise((resolve) => {
-                    loader.load(url, (gltf) => {
-                        fishingboatPrototype = gltf.scene;
-                        fishingboatPrototype.traverse(n => {
-                            if (n.isMesh) {
-                                n.castShadow = true;
-                                n.receiveShadow = true;
-                            }
-                        });
-                        console.log(`Fishing boat loaded successfully from: ${url}`);
-                        resolve();
-                    }, (progress) => {
-                        // Loading progress - no action needed
-                    }, (error) => {
-                        console.warn(`Fishing boat load failed for ${url}:`, error);
-                        resolve();
-                    });
-                });
-                if (fishingboatPrototype) break;
-            }
-
-            if (!fishingboatPrototype) {
-                console.warn('Failed to load fishing boat GLB, using fallback cube');
-                const cubeGeometry = new THREE.BoxGeometry(0.4, 0.15, 0.8);
-                const cubeMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-                fishingboatPrototype = new THREE.Mesh(cubeGeometry, cubeMaterial);
-            }
+            fishingboatPrototype = createProceduralFishingBoat();
+            console.log('Generated procedural fishing boat');
         }
 
         async function ensurePortLoaded() {
             if (portPrototype) return;
-            const loader = new THREE.GLTFLoader();
-
-            const baseHref = window.location.href.replace(/[#?].*$/, '');
-            const pageDir = baseHref.replace(/[^\/]*$/, '');
-            const primary = settings.portModelPath || 'Models/shipping-port-low-poly/shipping-port-low-poly.glb';
-            const candidates = [
-                primary,
-                './' + primary,
-                pageDir + primary,
-                '/' + primary.replace(/^\/*/, '')
-            ];
-
-            console.log('Port loader candidates:', candidates);
-            for (let i = 0; i < candidates.length; i++) {
-                const url = candidates[i];
-                await new Promise((resolve) => {
-                    loader.load(url, (gltf) => {
-                        portPrototype = gltf.scene;
-                        portPrototype.traverse(n => {
-                            if (n.isMesh) {
-                                n.castShadow = true;
-                                n.receiveShadow = true;
-                                if (n.material && n.material.map && THREE.sRGBEncoding) {
-                                    n.material.map.encoding = THREE.sRGBEncoding;
-                                    n.material.needsUpdate = true;
-                                }
-                                if (n.material && n.material.emissiveMap && THREE.sRGBEncoding) {
-                                    n.material.emissiveMap.encoding = THREE.sRGBEncoding;
-                                    n.material.needsUpdate = true;
-                                }
-                            }
-                        });
-                        console.log('Loaded port model from', url);
-                        resolve();
-                    }, undefined, (err) => {
-                        console.warn('Failed port candidate:', url, err);
-                        resolve();
-                    });
-                });
-                if (portPrototype) break;
-            }
-
-            if (!portPrototype) {
-                console.error('All port paths failed, using fallback cube');
-                const g = new THREE.BoxGeometry(0.4, 0.2, 0.6);
-                const m = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
-                portPrototype = new THREE.Mesh(g, m);
-            }
+            portPrototype = createProceduralPort();
+            console.log('Generated procedural port');
         }
 
         function identifyLandmasses() {
@@ -1329,18 +1352,52 @@
             });
 
             console.log(`Placed ${portSites.length} shipping ports total`);
+
+            // Update strategic tiles to reflect port placement
+            updateStrategicTilesForPorts();
+        }
+
+        /**
+         * Updates strategic tiles after ports are placed
+         * Marks strategic tiles on port locations as walkable
+         */
+        function updateStrategicTilesForPorts() {
+            console.log('Updating strategic tiles for port locations...');
+            let updatedCount = 0;
+
+            // For each port, find all strategic tiles that overlap with the port's texture tile
+            shippingPorts.forEach((portInfo, landmassId) => {
+                const portTextureTileId = portInfo.waterTile.userData.tileId;
+
+                // Find all strategic tiles that have this texture tile as their parent
+                strategicTileMap.forEach((strategicTile, strategicTileId) => {
+                    if (strategicTile.textureParentId === portTextureTileId) {
+                        // Mark this strategic tile as having port access
+                        strategicTile.isWalkable = true;
+                        strategicTile.movementCost = 1.0;
+                        strategicTile.biomeType = 'ocean'; // Ensure it's treated as water
+                        updatedCount++;
+                    }
+                });
+            });
+
+            console.log(`Updated ${updatedCount} strategic tiles for port access`);
         }
 
         // Port travel helper functions
         function getCurrentLandmass() {
             if (!playerCharacter || !playerCharacter.currentTileId) return null;
 
-            const currentTile = tileMap.get(playerCharacter.currentTileId);
+            const currentTile = strategicTileMap.get(playerCharacter.currentTileId);
             if (!currentTile) return null;
 
+            // Check parent texture tile for port (strategic tiles don't have userData)
+            const parentTextureTile = currentTile.textureParentId !== null ?
+                textureTileMap.get(currentTile.textureParentId) : null;
+
             // If standing on a port, return its landmass directly
-            if (currentTile.userData.hasPort) {
-                return currentTile.userData.portLandmass;
+            if (parentTextureTile && parentTextureTile.mesh && parentTextureTile.mesh.userData.hasPort) {
+                return parentTextureTile.mesh.userData.portLandmass;
             }
 
             // Find which landmass the current tile belongs to
@@ -1352,9 +1409,26 @@
             return null;
         }
 
-        function canReachPort(fromTile, portTile) {
+        function canReachPort(fromStrategicTile, portTextureTile) {
             if (!pathfinder) return false;
-            const path = pathfinder.findPath(fromTile.userData.tileId, portTile.userData.tileId);
+
+            // fromStrategicTile is a strategic tile (plain object with .id)
+            // portTextureTile is a texture tile (THREE.Mesh with .userData.tileId)
+            // We need to find a strategic tile on the port location
+
+            const portTextureTileId = portTextureTile.userData.tileId;
+
+            // Find any strategic tile that has this port's texture tile as parent
+            let portStrategicTileId = null;
+            strategicTileMap.forEach((tile, tileId) => {
+                if (tile.textureParentId === portTextureTileId && !portStrategicTileId) {
+                    portStrategicTileId = tileId;
+                }
+            });
+
+            if (!portStrategicTileId) return false;
+
+            const path = pathfinder.findPath(fromStrategicTile.id, portStrategicTileId);
             return path && path.length > 0;
         }
 
@@ -1381,8 +1455,13 @@
 
         function isPlayerOnPort() {
             if (!playerCharacter || !playerCharacter.currentTileId) return false;
-            const currentTile = tileMap.get(playerCharacter.currentTileId);
-            return currentTile && currentTile.userData.hasPort;
+            const currentTile = strategicTileMap.get(playerCharacter.currentTileId);
+            if (!currentTile) return false;
+
+            // Check parent texture tile for port
+            const parentTextureTile = currentTile.textureParentId !== null ?
+                textureTileMap.get(currentTile.textureParentId) : null;
+            return parentTextureTile && parentTextureTile.mesh && parentTextureTile.mesh.userData.hasPort;
         }
 
         // Context menu functions
@@ -1496,11 +1575,25 @@
                 return;
             }
 
-            const targetTileId = targetPortInfo.waterTile.userData.tileId;
-            console.log(`🚢 Sailing to landmass ${targetLandmassId}, port at tile ${targetTileId}`);
+            const targetTextureTileId = targetPortInfo.waterTile.userData.tileId;
+
+            // Find a strategic tile on this port's texture tile
+            let targetStrategicTileId = null;
+            strategicTileMap.forEach((tile, tileId) => {
+                if (tile.textureParentId === targetTextureTileId && !targetStrategicTileId) {
+                    targetStrategicTileId = tileId;
+                }
+            });
+
+            if (!targetStrategicTileId) {
+                console.log(`Cannot find strategic tile for port on landmass ${targetLandmassId}`);
+                return;
+            }
+
+            console.log(`🚢 Sailing to landmass ${targetLandmassId}, strategic tile ${targetStrategicTileId}`);
 
             // Use standard movement with port-to-port water walkability
-            await playerCharacter.moveToTile(targetTileId, pathfinder);
+            await playerCharacter.moveToTile(targetStrategicTileId, pathfinder);
         }
 
         async function moveCharacterToTile(tileMesh) {
@@ -1603,6 +1696,8 @@
         scene.add(structuresGroup);
         const placementState = { active: false, type: null };
         let stallsPrototype = null; // Loaded GLB for stalls
+        let lumberPrototype = null;
+        let farmPrototype = null;
         let placementGhost = null;  // Preview mesh while placing
 
         // Shipping port system
@@ -1643,8 +1738,6 @@
             characterMovementSpeed: 2.0, // Character movement speed (tiles per second)
             waveCrestSize: 1.0,
             coastlineGlow: 1.0,
-            stallsModelPath: 'Models/market-stalls/market-stalls.glb', // Primary path for stalls model
-            portModelPath: 'Models/shipping-port-low-poly/shipping-port-low-poly.glb', // Path for shipping port model
             seed: Math.floor(Math.random() * 1e9)
         };
         let simplex = null; // seeded Simplex noise instance
@@ -2269,26 +2362,8 @@
             playerStartTile = startData.tile;
             console.log('Found player start tile:', playerStartTile.userData.debugData.biomeType);
             
-            // Create a simple, guaranteed-to-be-visible castle
-            const simpleCastle = new THREE.Group();
-            
-            // Create a large, bright red box as the castle
-            const castleBase = new THREE.BoxGeometry(0.5, 0.3, 0.5);
-            const castleMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0xff0000,
-                transparent: false
-            });
-            const base = new THREE.Mesh(castleBase, castleMaterial);
-            simpleCastle.add(base);
-            
-            // Add a bright green sphere on top
-            const sphereGeometry = new THREE.SphereGeometry(0.2, 8, 6);
-            const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            sphere.position.y = 0.4;
-            simpleCastle.add(sphere);
-            
-            castle = simpleCastle;
+            // Create a procedural castle
+            castle = createProceduralCastle();
             
             // Position the castle on the selected tile surface
             const tilePosition = startData.position.clone();
@@ -2340,8 +2415,8 @@
             // Clone the fishing boat model
             const boat = fishingboatPrototype.clone(true);
 
-            // Scale the fishing boat to appropriate size for the world (extremely small)
-            boat.scale.set(0.0004, 0.0004, 0.0004);
+            // Scale the fishing boat to appropriate size
+            boat.scale.set(0.2, 0.2, 0.2);
 
             // Reset any existing rotations from the model
             boat.rotation.set(0, 0, 0);
@@ -2652,7 +2727,7 @@
 
         // Apply the tiny scale to existing boats at the end of planet generation
         function applyTinyBoatScale() {
-            updateExistingBoatScales(0.0004);
+            updateExistingBoatScales(0.2);
         }
 
         // Character movement system
@@ -3494,9 +3569,7 @@
             }
             
             createCharacterMesh() {
-                const geometry = new THREE.SphereGeometry(0.15, 8, 6);
-                const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-                const mesh = new THREE.Mesh(geometry, material);
+                const mesh = createProceduralAdventurer();
                 scene.add(mesh);
                 return mesh;
             }
@@ -3533,6 +3606,7 @@
 
                 // Both use same rotation when stationary
                 this.mesh.rotation.set(0, 0, 0);
+                if (typeof emitPlayerMove === 'function') emitPlayerMove(this.currentTileId, this.isShipTravel);
             }
 
             async switchToSailboat() {
@@ -3549,8 +3623,8 @@
                 if (!this.sailboatMesh && sailboatPrototype) {
                     this.sailboatMesh = sailboatPrototype.clone(true);
 
-                    // Scale down the sailboat to appropriate size (50% smaller)
-                    this.sailboatMesh.scale.set(0.001, 0.001, 0.001);
+                    // Scale down the sailboat to appropriate size
+                    this.sailboatMesh.scale.set(0.25, 0.25, 0.25);
 
                     // Reset any existing rotations from the model
                     this.sailboatMesh.rotation.set(0, 0, 0);
@@ -3608,7 +3682,22 @@
                 // Check if this is port-to-port travel
                 const currentTile = this.tileMap.get(this.currentTileId);
                 const targetTile = this.tileMap.get(targetTileId);
-                const isPortToPortTravel = currentTile?.userData.hasPort && targetTile?.userData.hasPort;
+
+                // Check parent texture tiles for ports (strategic tiles don't have userData)
+                const isStrategicTile = !currentTile?.userData;
+                let isPortToPortTravel = false;
+
+                if (isStrategicTile) {
+                    // For strategic tiles, check their parent texture tiles
+                    const currentParent = currentTile?.textureParentId !== null ?
+                        textureTileMap.get(currentTile.textureParentId) : null;
+                    const targetParent = targetTile?.textureParentId !== null ?
+                        textureTileMap.get(targetTile.textureParentId) : null;
+                    isPortToPortTravel = currentParent?.mesh?.userData.hasPort && targetParent?.mesh?.userData.hasPort;
+                } else {
+                    // For texture tiles, check directly
+                    isPortToPortTravel = currentTile?.userData.hasPort && targetTile?.userData.hasPort;
+                }
 
                 let path;
 
@@ -3621,22 +3710,24 @@
                     // Temporarily modify walkability for water-only ship travel
                     const originalWalkability = new Map();
                     this.tileMap.forEach((tile, tileId) => {
-                        const debugData = tile.userData.debugData;
-                        const isWater = debugData.biomeType === 'ocean';
-                        const isPort = tile.userData.hasPort;
+                        // Handle both strategic tiles (plain objects) and texture tiles (with userData)
+                        const isWater = tile.biomeType === 'ocean';
+                        const isPort = isStrategicTile ?
+                            textureTileMap.get(tile.textureParentId)?.mesh?.userData.hasPort :
+                            tile.userData?.hasPort;
                         const isStartOrEndPort = tileId === this.currentTileId || tileId === targetTileId;
 
                         // Store original walkability for all tiles
-                        originalWalkability.set(tileId, debugData.isWalkable);
+                        originalWalkability.set(tileId, tile.isWalkable);
 
                         if (isWater || isStartOrEndPort) {
                             // Make water tiles and start/end ports walkable
-                            debugData.isWalkable = true;
-                            debugData.movementCost = 1.0;
+                            tile.isWalkable = true;
+                            tile.movementCost = 1.0;
                         } else {
                             // Make all other land tiles unwalkable for water-only travel
-                            debugData.isWalkable = false;
-                            debugData.movementCost = Infinity;
+                            tile.isWalkable = false;
+                            tile.movementCost = Infinity;
                         }
                     });
 
@@ -3646,9 +3737,9 @@
                     // Restore original walkability for all tiles
                     originalWalkability.forEach((originalWalkable, tileId) => {
                         const tile = this.tileMap.get(tileId);
-                        if (tile?.userData.debugData) {
-                            tile.userData.debugData.isWalkable = originalWalkable;
-                            tile.userData.debugData.movementCost = originalWalkable ? 1.0 : Infinity;
+                        if (tile) {
+                            tile.isWalkable = originalWalkable;
+                            tile.movementCost = originalWalkable ? 1.0 : Infinity;
                         }
                     });
 
@@ -3691,7 +3782,7 @@
                 const currentTile = this.tileMap.get(this.currentTileId);
                 const nextTileId = this.path[this.pathIndex];
                 const nextTile = this.tileMap.get(nextTileId);
-                
+
                 if (!currentTile || !nextTile) {
                     console.log('Invalid tile in path, stopping movement');
                     this.isMoving = false;
@@ -3699,9 +3790,11 @@
                     this.clearPathLine();
                     return;
                 }
-                
-                const currentPos = currentTile.userData.debugData.tileCenter;
-                const nextPos = nextTile.userData.debugData.tileCenter;
+
+                // Get positions - handle both strategic tiles (plain objects) and texture tiles (with userData)
+                const isStrategicTile = !currentTile.userData;
+                const currentPos = isStrategicTile ? currentTile.position : currentTile.userData.debugData.tileCenter;
+                const nextPos = isStrategicTile ? nextTile.position : nextTile.userData.debugData.tileCenter;
                 
                 // Calculate movement
                 const distance = currentPos.distanceTo(nextPos);
@@ -3718,6 +3811,7 @@
                     this.segmentT = 0;
                     // Reached next tile
                     this.currentTileId = nextTileId;
+                    emitPlayerMove(this.currentTileId, this.isShipTravel);
                     this.pathIndex++;
                     
                     if (this.pathIndex >= this.path.length) {
@@ -3742,14 +3836,15 @@
                 } else {
                     // Move towards next tile using accumulated segmentT
                     const newPos = currentPos.clone().lerp(nextPos, this.segmentT);
-                    
+
                     // Position at interpolated position - IDENTICAL for both character and sailboat
                     this.mesh.position.copy(newPos);
 
                     // Add height offset - sailboat above surface level
                     const heightOffset = this.isShipTravel ? 0.25 : 0.2;
+                    const tileNormal = isStrategicTile ? nextTile.normal : nextTile.userData.debugData.tileNormal;
                     this.mesh.position.add(
-                        nextTile.userData.debugData.tileNormal.clone().multiplyScalar(heightOffset)
+                        tileNormal.clone().multiplyScalar(heightOffset)
                     );
 
                     // Handle rotation AFTER positioning is complete (doesn't affect path following)
@@ -3780,9 +3875,14 @@
                 const pts = [];
                 for (let i = 0; i < fullPathIds.length; i++) {
                     const t = this.tileMap.get(fullPathIds[i]);
-                    if (!t || !t.userData || !t.userData.debugData) continue;
-                    const c = t.userData.debugData.tileCenter;
-                    const n = t.userData.debugData.tileNormal;
+                    if (!t) continue;
+
+                    // Handle both strategic tiles (plain objects) and texture tiles (with userData)
+                    const isStrategicTile = !t.userData;
+                    if (!isStrategicTile && (!t.userData || !t.userData.debugData)) continue;
+
+                    const c = isStrategicTile ? t.position : t.userData.debugData.tileCenter;
+                    const n = isStrategicTile ? t.normal : t.userData.debugData.tileNormal;
                     pts.push(c.clone().add(n.clone().multiplyScalar(0.22)));
                 }
                 if (pts.length < 2) return;
@@ -5690,6 +5790,64 @@
                 }
             });
         }
+
+        // Game Loop
+        let gameTime = 0;
+        let currentSeason = "";
+        
+        function gameTick() {
+            gameTime++;
+            
+            // Income
+            let goldIncome = 0;
+            let woodIncome = 0;
+            let foodIncome = 0;
+
+            // Structures
+            structuresGroup.children.forEach(structure => {
+                if (structure.userData.structureType === 'stalls') {
+                    goldIncome += 2;
+                } else if (structure.userData.structureType === 'port') {
+                    goldIncome += 5;
+                } else if (structure.userData.structureType === 'lumber') {
+                    woodIncome += 5;
+                } else if (structure.userData.structureType === 'farm') {
+                    foodIncome += 5;
+                }
+            });
+
+            if (castle) goldIncome += 5;
+
+            gameState.resources.gold += goldIncome;
+            gameState.resources.wood += woodIncome;
+            gameState.resources.food += foodIncome;
+            
+            // Season Logic
+            const year = Math.floor(gameTime / 60) + 1;
+            const seasonPhase = (gameTime % 60) / 60; 
+            let seasonName = "Spring";
+            if (seasonPhase > 0.25) seasonName = "Summer";
+            if (seasonPhase > 0.5) seasonName = "Autumn";
+            if (seasonPhase > 0.75) seasonName = "Winter";
+            
+            if (seasonName !== currentSeason) {
+                currentSeason = seasonName;
+                if (seasonName === "Winter") {
+                    settings.snowIntensity = 0.8;
+                    generateSnowEffects(); 
+                } else if (settings.snowIntensity > 0) {
+                    settings.snowIntensity = 0.0;
+                    generateSnowEffects();
+                }
+            }
+            
+            const elSeason = document.getElementById('game-season');
+            if (elSeason) elSeason.textContent = `Y${year} ${seasonName}`;
+
+            updateResourceDisplay();
+        }
+        
+        setInterval(gameTick, 1000);
 
         // Animate
         (function animate() {
