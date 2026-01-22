@@ -122,6 +122,7 @@
             <button id="tab-land" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Land</button>
             <button id="tab-mountain" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Mountain</button>
             <button id="tab-controls" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Controls</button>
+            <button id="tab-research" class="tab-button" style="flex: 1; padding: 5px; border: none; background: #f0f0f0; color: #333; cursor: pointer;">Research</button>
         </div>
         
         <!-- Terrain Tab -->
@@ -238,6 +239,25 @@
             <label style="margin-top:10px">Outline Alpha: <span class="value" id="alphaValue">0.05</span></label>
             <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.05" />
         </div>
+
+        <!-- Research Tab -->
+        <div id="tab-research-content" class="tab-content" style="display: none;">
+            <div style="margin-bottom:12px; padding:10px; background:rgba(255,255,255,0.05); border-radius:5px;">
+                <div style="font-weight:bold; color:#4FC3F7; margin-bottom:4px;">Forestry Lvl <span id="res-forestry-lvl">0</span></div>
+                <div style="font-size:11px; margin-bottom:8px;">Increases Wood production by 20%</div>
+                <button id="btn-research-forestry" style="width:100%; padding:4px; cursor:pointer; background:rgba(79, 195, 247, 0.2); border:1px solid #4FC3F7; color:#fff; border-radius:4px;">Upgrade (100💰)</button>
+            </div>
+            <div style="margin-bottom:12px; padding:10px; background:rgba(255,255,255,0.05); border-radius:5px;">
+                <div style="font-weight:bold; color:#4FC3F7; margin-bottom:4px;">Irrigation Lvl <span id="res-irrigation-lvl">0</span></div>
+                <div style="font-size:11px; margin-bottom:8px;">Increases Food production by 20%</div>
+                <button id="btn-research-irrigation" style="width:100%; padding:4px; cursor:pointer; background:rgba(79, 195, 247, 0.2); border:1px solid #4FC3F7; color:#fff; border-radius:4px;">Upgrade (100🍎)</button>
+            </div>
+            <div style="margin-bottom:12px; padding:10px; background:rgba(255,255,255,0.05); border-radius:5px;">
+                <div style="font-weight:bold; color:#4FC3F7; margin-bottom:4px;">Trade Lvl <span id="res-trade-lvl">0</span></div>
+                <div style="font-size:11px; margin-bottom:8px;">Increases Gold production by 20%</div>
+                <button id="btn-research-trade" style="width:100%; padding:4px; cursor:pointer; background:rgba(79, 195, 247, 0.2); border:1px solid #4FC3F7; color:#fff; border-radius:4px;">Upgrade (100💰)</button>
+            </div>
+        </div>
         
         <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <button id="regen" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer;">Regenerate</button>
@@ -251,6 +271,29 @@
             <span class="value" id="zoomInfo">Zoom: 30</span>
         </div>
     </div>
+
+    <!-- Event Log -->
+    <div id="game-log" style="
+        position: absolute;
+        bottom: 80px;
+        left: 16px;
+        width: 300px;
+        height: 150px;
+        background: rgba(0,25,50,0.4);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 8px;
+        padding: 8px;
+        font-family: 'Inter', sans-serif;
+        font-size: 11px;
+        color: #ddd;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        pointer-events: none;
+        z-index: 5;
+        border: 1px solid rgba(255,255,255,0.1);
+    "></div>
 
     <!-- Three.js and controls (non-module for easy file:// usage) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -733,8 +776,28 @@
                 gold: 100,
                 wood: 100,
                 food: 100
+            },
+            research: {
+                forestry: 0, // Level 0
+                irrigation: 0,
+                trade: 0
             }
         };
+
+        function notify(message, type = 'info') {
+            const log = document.getElementById('game-log');
+            if (!log) return;
+            const entry = document.createElement('div');
+            entry.style.marginBottom = '4px';
+            entry.style.padding = '4px 8px';
+            entry.style.borderRadius = '4px';
+            entry.style.background = type === 'success' ? 'rgba(0,255,0,0.1)' : 'rgba(255,255,255,0.05)';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.prepend(entry);
+            
+            // Cleanup
+            if (log.children.length > 50) log.lastChild.remove();
+        }
 
         // --- Multiplayer ---
         const socket = io();
@@ -757,6 +820,56 @@
 
         socket.on('playerDisconnected', (id) => {
             removeOtherPlayer(id);
+        });
+
+        // --- Research Logic ---
+        function updateResearchUI() {
+            document.getElementById('res-forestry-lvl').textContent = gameState.research.forestry;
+            document.getElementById('res-irrigation-lvl').textContent = gameState.research.irrigation;
+            document.getElementById('res-trade-lvl').textContent = gameState.research.trade;
+            
+            document.getElementById('btn-research-forestry').textContent = `Upgrade (${(gameState.research.forestry + 1) * 100}💰)`;
+            document.getElementById('btn-research-irrigation').textContent = `Upgrade (${(gameState.research.irrigation + 1) * 100}🍎)`;
+            document.getElementById('btn-research-trade').textContent = `Upgrade (${(gameState.research.trade + 1) * 100}💰)`;
+        }
+
+        document.getElementById('btn-research-forestry').addEventListener('click', () => {
+            const cost = (gameState.research.forestry + 1) * 100;
+            if (gameState.resources.gold >= cost) {
+                gameState.resources.gold -= cost;
+                gameState.research.forestry++;
+                notify(`Forestry upgraded to level ${gameState.research.forestry}!`, 'success');
+                updateResourceDisplay();
+                updateResearchUI();
+            } else {
+                notify("Not enough gold for Forestry research.", 'info');
+            }
+        });
+
+        document.getElementById('btn-research-irrigation').addEventListener('click', () => {
+            const cost = (gameState.research.irrigation + 1) * 100;
+            if (gameState.resources.food >= cost) {
+                gameState.resources.food -= cost;
+                gameState.research.irrigation++;
+                notify(`Irrigation upgraded to level ${gameState.research.irrigation}!`, 'success');
+                updateResourceDisplay();
+                updateResearchUI();
+            } else {
+                notify("Not enough food for Irrigation research.", 'info');
+            }
+        });
+
+        document.getElementById('btn-research-trade').addEventListener('click', () => {
+            const cost = (gameState.research.trade + 1) * 100;
+            if (gameState.resources.gold >= cost) {
+                gameState.resources.gold -= cost;
+                gameState.research.trade++;
+                notify(`Trade upgraded to level ${gameState.research.trade}!`, 'success');
+                updateResourceDisplay();
+                updateResearchUI();
+            } else {
+                notify("Not enough gold for Trade research.", 'info');
+            }
         });
 
         function addOtherPlayer(playerData) {
@@ -5457,6 +5570,7 @@
 
         // Initial
         setSeedLabel();
+        notify("Welcome to Hex Planet! Establish your base and grow your empire.", "success");
         // Initialize with settings values
         textureDetailValue.textContent = settings.textureDetail;
         strategicDetailValue.textContent = settings.strategicDetail;
@@ -5818,6 +5932,11 @@
 
             if (castle) goldIncome += 5;
 
+            // Apply Research Bonuses (20% per level)
+            woodIncome *= (1 + gameState.research.forestry * 0.2);
+            foodIncome *= (1 + gameState.research.irrigation * 0.2);
+            goldIncome *= (1 + gameState.research.trade * 0.2);
+
             gameState.resources.gold += goldIncome;
             gameState.resources.wood += woodIncome;
             gameState.resources.food += foodIncome;
@@ -5832,6 +5951,7 @@
             
             if (seasonName !== currentSeason) {
                 currentSeason = seasonName;
+                notify(`The season is now ${seasonName}.`, 'info');
                 if (seasonName === "Winter") {
                     settings.snowIntensity = 0.8;
                     generateSnowEffects(); 
