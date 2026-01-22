@@ -1234,11 +1234,17 @@
             updateResourceDisplay();
             if (window.audioEngine) window.audioEngine.playBuild();
 
+            console.log(`Placing ${placementState.type}`);
+
             const d = tile.userData.debugData;
             const inst = proto.clone(true);
             const pos = d.tileCenter.clone();
             const n = d.tileNormal.clone();
-            inst.position.copy(pos.clone().add(n.clone().multiplyScalar(0.22)));
+            
+            // Fix: Lift structure significantly to avoid terrain clipping (shader displacement)
+            // Shader can add ~0.1 - 0.2 height. We go to 0.35 to be safe.
+            inst.position.copy(pos.clone().add(n.clone().multiplyScalar(0.35)));
+            
             const up = new THREE.Vector3(0,1,0);
             const q = new THREE.Quaternion().setFromUnitVectors(up, n);
             inst.setRotationFromQuaternion(q);
@@ -1246,8 +1252,10 @@
             // Respect prototype scale
             inst.scale.copy(proto.scale);
             
-            // Tag structure for game logic
+            // Tag structure for game logic - Critical for gameTick
             inst.userData.structureType = placementState.type;
+            
+            console.log("Structure placed with data:", inst.userData);
 
             structuresGroup.add(inst);
             exitPlacementMode();
@@ -5998,6 +6006,7 @@
         
         function gameTick() {
             gameTime++;
+            // console.log("Tick - Structures:", structuresGroup.children.length); // Debug
             
             // Income
             let goldIncome = 0;
